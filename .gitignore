@@ -1,0 +1,61 @@
+# Ambiente virtual (venv, pipenv, conda, etc.)
+venv/
+.env.
+.env/
+.venv/
+env/
+ENV/
+virtualenv/
+pipenv/
+.Python/
+conda-env/
+
+# Arquivos de configuração e ambiente
+.env
+.env.local
+.env.development
+.env.production
+.env.test
+.secrets
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Cache e arquivos temporários
+__pycache__/
+**/__pycache__/
+**/__pycache__/*
+**/__pycache__
+*.py[cod]
+*$py.class
+.pytest_cache/
+.mypy_cache/
+*.egg-info/
+*.egg
+dist/
+build/
+*.so
+*.pyd
+logs/
+
+# Logs e arquivos de dados
+*.log
+*.sqlite
+*.db
+*.dump
+*.cache
+
+# Jupyter Notebook
+.ipynb_checkpoints/
+*.ipynb
+
+# Arquivos de sistema
+.DS_Store
+Thumbs.db.env
+temp/
+.env
+
+# Arquivos do projeto
+drivers/**/*
+!drivers/
