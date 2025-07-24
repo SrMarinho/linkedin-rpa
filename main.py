@@ -5,17 +5,21 @@ from src.core.use_cases.connect_with_people_searched import ConnectWithPeopleSea
 from src.config.settings import logger
 
 
-def setup_chrome_options():
+def setup_chrome_options(headless: bool = False):
     user_profile = os.environ["USERPROFILE"]
     chrome_user_data = f"{user_profile}\\AppData\\Local\\Google\\Chrome\\User Data"
 
     options = Options()
     options.add_argument(f"user-data-dir={chrome_user_data}")
     options.add_argument("profile-directory=Default")
+    if headless:
+        options.add_argument("--headless=new")  # Formato atualizado
+        options.add_argument("--disable-gpu")  # Prefixo corrigido
+
     return options
 
 def setup():
-    options = setup_chrome_options()
+    options = setup_chrome_options(headless=False)
     driver = webdriver.Chrome(options=options)
     return driver
 
