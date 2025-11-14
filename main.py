@@ -13,15 +13,17 @@ def setup_chrome_options(headless: bool = False):
     options.add_argument(f"user-data-dir={chrome_user_data}")
     options.add_argument("profile-directory=Default")
     if headless:
-        options.add_argument("--headless=new")  # Formato atualizado
-        options.add_argument("--disable-gpu")  # Prefixo corrigido
+        options.add_argument("--headless=new")
+        options.add_argument("--disable-gpu")
 
     return options
+
 
 def setup():
     options = setup_chrome_options(headless=False)
     driver = webdriver.Chrome(options=options)
     return driver
+
 
 def main():
     try:
@@ -30,6 +32,7 @@ def main():
     except Exception as e:
         logger.critical(f"{str(e)}")
         raise
+
 
 if __name__ == "__main__":
     main()

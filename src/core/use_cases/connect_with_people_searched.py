@@ -8,16 +8,17 @@ class ConnectWithPeopleSearched:
     def __init__(self, driver: WebDriver):
         self.driver = driver
         self.tech_recruiter_search_page = TechRecruiterSeachPage(self.driver)
-    
+
     def run(self):
         time.sleep(2)
         self.tech_recruiter_search_page.navigate()
         time.sleep(5)
-        
+
         recruiters = self.tech_recruiter_search_page.get_connectables_list()
 
         for recruiter in recruiters:
-            self.tech_recruiter_search_page.try_connect(recruiter)
+            print(recruiter.inner_html)
+            # self.tech_recruiter_search_page.try_connect(recruiter)
 
         return
         while True:

@@ -14,6 +14,7 @@ class SingleLineFormatter(logging.Formatter):
         msg = super().format(record)
         return msg.replace("\n", " ")
 
+
 # -------------------------------------------------------------
 # Wrapper / fábrica de logger
 # -------------------------------------------------------------
