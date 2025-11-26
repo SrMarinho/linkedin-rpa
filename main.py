@@ -19,13 +19,13 @@ def setup_chrome_options(headless: bool = False):
 
     return options
 
+
 def get_config() -> dict:
     env_headless = str(os.getenv("HEADLESS")).upper()
     headless = False if env_headless == "FALSE" else True
 
-    return {
-        "headless": headless
-    }
+    return {"headless": headless}
+
 
 def setup():
     config = get_config()
