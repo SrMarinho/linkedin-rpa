@@ -19,7 +19,6 @@ class TechRecruiterSeachPage:
         logger.info(f"{self.PAGE_NAME} - Navegando para a página")
         try:
             self.driver.get(self.URL)
-            time.sleep(5)
             return True
         except Exception as e:
             logger.error(
