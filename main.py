@@ -21,7 +21,7 @@ def setup_chrome_options(headless: bool = False):
 
 def get_config() -> dict:
     env_headless = str(os.getenv("HEADLESS")).upper()
-    headless = False if env_headless == "FALSE" else False
+    headless = False if env_headless == "FALSE" else True
 
     return {
         "headless": headless
