@@ -57,7 +57,7 @@ class TechRecruiterSeachPage:
     def btn_next_page(self) -> WebElement | None:
         try:
             logger.info(f"{self.PAGE_NAME} - Buscando botão para próxima página")
-            btn_connect = WebDriverWait(self.driver, 10).until(
+            btn_connect = WebDriverWait(self.driver, 5).until(
                 lambda _: self.driver.find_element(By.XPATH, "//span[contains(.,'Próxima')]")
             )
             return btn_connect
