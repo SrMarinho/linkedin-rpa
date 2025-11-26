@@ -3,6 +3,7 @@ from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
 from src.core.use_cases.connect_with_people_searched import ConnectWithPeopleSearched
 from src.config.settings import logger
+from dotenv import load_dotenv
 
 
 def setup_chrome_options(headless: bool = False):
@@ -18,9 +19,17 @@ def setup_chrome_options(headless: bool = False):
 
     return options
 
+def get_config() -> dict:
+    env_headless = str(os.getenv("HEADLESS")).upper()
+    headless = False if env_headless == "FALSE" else False
+
+    return {
+        "headless": headless
+    }
 
 def setup():
-    options = setup_chrome_options(headless=False)
+    config = get_config()
+    options = setup_chrome_options(**config)
     driver = webdriver.Chrome(options=options)
     return driver
 
@@ -35,4 +44,5 @@ def main():
 
 
 if __name__ == "__main__":
+    load_dotenv()
     main()

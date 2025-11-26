@@ -8,26 +8,21 @@ class ConnectWithPeopleSearched:
     def __init__(self, driver: WebDriver):
         self.driver = driver
         self.tech_recruiter_search_page = TechRecruiterSeachPage(self.driver)
-
-    def run(self):
-        time.sleep(2)
-        self.tech_recruiter_search_page.navigate()
-        time.sleep(5)
-
-        recruiters = self.tech_recruiter_search_page.get_connectables_list()
-
-        for recruiter in recruiters:
-            print(recruiter.inner_html)
-            # self.tech_recruiter_search_page.try_connect(recruiter)
-
-        return
-        while True:
-            recruiters = self.tech_recruiter_search_page.get_connectables_list()
-
-            has_connectable = False
-            for recruiter in recruiters:
-                if self.tech_recruiter_search_page.try_connect(recruiter):
-                    break
-
-            if not has_connectable:
+    
+    def _connect_with_all_recruiters(self):
+        while btn_connect := self.tech_recruiter_search_page.get_btn_connect():
+            if not btn_connect:
                 break
+
+            btn_connect.click()
+            self.tech_recruiter_search_page.confirm_invitation()
+    
+    def run(self):
+        self.tech_recruiter_search_page.navigate()
+    
+        while True:
+            self._connect_with_all_recruiters()
+            next_page = self.tech_recruiter_search_page.btn_next_page()
+            if not next_page:
+                break
+            next_page.click()

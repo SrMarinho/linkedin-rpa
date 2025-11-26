@@ -26,99 +26,44 @@ class TechRecruiterSeachPage:
                 f"{self.PAGE_NAME} - Não foi possível navegar para a página solicitada - {str(e)}"
             )
             return False
-
-    def _get_recruiter_list(self) -> list[WebElement]:
-        time.sleep(1)
+    
+    
+    def confirm_invitation(self) -> None:
+        logger.info(f"{self.PAGE_NAME} - Clicando em 'Enviar sem nota'")
         try:
-            logger.info(f"{self.PAGE_NAME} - Pegando container da lista de recrutadores")
-            container = WebDriverWait(self.driver, 10).until(
-                EC.presence_of_element_located((By.CSS_SELECTOR, "[data-view-name='people-search-result']"))
+            interop_outlet = self.driver.find_element(By.ID, "interop-outlet")
+            shadow_root = interop_outlet.shadow_root
+            btn: WebElement = WebDriverWait(self.driver, 10).until(
+                lambda _: shadow_root.find_element(By.CSS_SELECTOR, "[aria-label='Enviar sem nota']")
             )
-        except Exception as e:
-            logger.error(
-                f"{self.PAGE_NAME} - Erro ao pegar container da lista de recrutadores - {str(e)}"
-            )
-
-        print(container.get_attribute("innerHTML"))
-
-        main_sections = WebDriverWait(self.driver, 10).until(
-            lambda _: container.find_elements(By.XPATH, "./*")
-        )
-
-        if not main_sections[1]:
-            return []
-
-        return WebDriverWait(self.driver, 10).until(
-            lambda _: main_sections[1].find_element(By.TAG_NAME, "ul")
-        )
-
-    def get_connectables_list(self) -> list[WebElement]:
-        try:
-            logger.info(f"{self.PAGE_NAME} - Pegando lista de recrutadores")
-            recruiters_list = self._get_recruiter_list()
-            return []
-
-            recruiters = WebDriverWait(self.driver, 10).until(
-                lambda _: recruiters_list.find_elements(By.TAG_NAME, "li")
-            )
-
-            return recruiters
-        except Exception as e:
-            logger.error(
-                f"{self.PAGE_NAME} - Erro ao pegar lista de recrutadores - {str(e)}"
-            )
-            return []
-
-    def try_connect(self, recruiter: WebElement):
-        try:
-            time.sleep(0.5)
-            btn = WebDriverWait(recruiter, 10).until(
-                EC.presence_of_element_located((By.CLASS_NAME, "artdeco-button__text"))
-            )
-
-            if btn.text != "Conectar":
-                return False
 
             btn.click()
-            logger.info(f"{self.PAGE_NAME} - Clicando em conectar")
-            time.sleep(2)
-            self._try_connect_confirmation()
-            return True
         except Exception as e:
-            logger.error(
-                f"{self.PAGE_NAME} - Erro ao tentar conectar com recrutador - {str(e)}"
-            )
-            return False
+            logger.error(f"{self.PAGE_NAME} - Erro ao clicar no botão 'Enviar sem nota'. {e}")
 
-    def _try_connect_confirmation(self):
+    def get_btn_connect(self) -> WebElement | None:
+        time.sleep(1)
         try:
-            logger.info(f"{self.PAGE_NAME} - Confirmando conexão")
-            modal = WebDriverWait(self.driver, 10).until(
-                EC.presence_of_element_located(
-                    (By.ID, "artdeco-modal-outlet")
-                )  # Usando EC corretamente
+            logger.info(f"{self.PAGE_NAME} - Procurando botão para conectar")
+            btn_connect = WebDriverWait(self.driver, 10).until(
+                lambda _: self.driver.find_element(By.XPATH, "//span[contains(.,'Conectar')]")
             )
-            logger.debug(modal.get_attribute("innerHTML"))
-
-            btn_enviar_sem_nota = WebDriverWait(modal, 10).until(
-                EC.element_to_be_clickable(
-                    (
-                        By.CLASS_NAME,
-                        "artdeco-button artdeco-button--2 artdeco-button--primary ember-view ml1",
-                    )
-                )
-            )
-
-            logger.debug(btn_enviar_sem_nota)
-            # btn_enviar_sem_nota.click()
-
-            # buttons = WebDriverWait(self.driver, 10).until(
-            #     EC.element_to_be_clickable((By.CLASS_NAME, "artdeco-button artdeco-button--2 artdeco-button--primary ember-view ml1"))
-            # )
-            return True
-        except Exception as e:
+            return btn_connect
+        except Exception:
             logger.error(
-                f"{self.PAGE_NAME} - Erro ao tentar confirmar conexão com recrutador - {str(e)}"
+                f"{self.PAGE_NAME} - Sem recrutadores para conectar"
             )
-            raise e
-            return False
+        return None
+    
+    def btn_next_page(self) -> WebElement | None:
+        try:
+            logger.info(f"{self.PAGE_NAME} - Buscando botão para próxima página")
+            btn_connect = WebDriverWait(self.driver, 10).until(
+                lambda _: self.driver.find_element(By.XPATH, "//span[contains(.,'Próxima')]")
+            )
+            return btn_connect
+        except Exception:
+            logger.error(
+                f"{self.PAGE_NAME} - Sem próxima página"
+            )
+        return None
