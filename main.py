@@ -1,7 +1,7 @@
 import os
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
-from src.core.use_cases.connect_with_people_searched import ConnectWithPeopleSearched
+from src.automation.tasks.connect_with_searched import ConnectWithSearched
 from src.config.settings import logger
 from dotenv import load_dotenv
 
@@ -37,7 +37,7 @@ def setup():
 def main():
     try:
         with setup() as driver:
-            ConnectWithPeopleSearched(driver).run()
+            ConnectWithSearched(driver).run()
     except Exception as e:
         logger.critical(f"{str(e)}")
         raise

@@ -6,9 +6,9 @@ from selenium.webdriver.remote.webelement import WebElement
 from src.config.settings import logger
 
 
-class TechRecruiterSeachPage:
+class TechRecruiterSearchPage:
     URL = "https://www.linkedin.com/search/results/people/?keywords=tech%20recruiter&network=%5B%22S%22%5D&sid=fpd"
-    PAGE_NAME = "Tech Recruiter Seach Page"
+    PAGE_NAME = "Tech Recruiter Search Page"
 
     def __init__(self, driver: WebDriver):
         self.driver = driver
