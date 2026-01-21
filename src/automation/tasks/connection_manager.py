@@ -1,14 +1,14 @@
 from selenium.webdriver.remote.webdriver import WebDriver
-from src.core.use_cases import ConnectPeople
-from src.automation.pages import TechRecruiterSearchPage
+from src.core.use_cases import ConnectionHandler
+from src.automation.pages import RecruiterSearchPage
 from src.config.settings import logger
 
 
-class ConnectWithSearched:
+class ConnectionManager:
     def __init__(self, driver: WebDriver):
         self.driver = driver
-        self.searched_page = TechRecruiterSearchPage(self.driver)
-        self.connect_people = ConnectPeople(self.searched_page)
+        self.searched_page = RecruiterSearchPage(self.driver)
+        self.connect_people = ConnectionHandler(self.searched_page)
 
     def run(self):
         self.searched_page.navigate()

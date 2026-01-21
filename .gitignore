@@ -59,3 +59,4 @@ temp/
 # Arquivos do projeto
 drivers/**/*
 !drivers/
+screenshots/*

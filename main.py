@@ -1,7 +1,8 @@
 import os
+import src.config.settings as setting
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
-from src.automation.tasks.connect_with_searched import ConnectWithSearched
+from src.automation.tasks.connection_manager import ConnectionManager
 from src.config.settings import logger
 from dotenv import load_dotenv
 
@@ -13,6 +14,7 @@ def setup_chrome_options(headless: bool = False):
     options = Options()
     options.add_argument(f"user-data-dir={chrome_user_data}")
     options.add_argument("profile-directory=Default")
+    options.add_argument("--start-maximized")
     if headless:
         options.add_argument("--headless=new")
         options.add_argument("--disable-gpu")
@@ -35,12 +37,14 @@ def setup():
 
 
 def main():
-    try:
-        with setup() as driver:
-            ConnectWithSearched(driver).run()
-    except Exception as e:
-        logger.critical(f"{str(e)}")
-        raise
+    with setup() as driver:
+        try:
+            ConnectionManager(driver).run()
+            driver.save_screenshot(f"{setting.screenshots_path}.png")
+        except Exception as e:
+            logger.critical(f"{str(e)}")
+            driver.save_screenshot(f"{setting.screenshots_path}.png")
+            raise
 
 
 if __name__ == "__main__":

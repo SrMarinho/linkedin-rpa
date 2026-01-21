@@ -1,6 +1,6 @@
-from .tech_recruiter_search_page import TechRecruiterSearchPage
+from .linkedin_search_page import RecruiterSearchPage
 
 
 __all__ = [
-    "TechRecruiterSearchPage"
+    "RecruiterSearchPage"
 ]

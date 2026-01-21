@@ -1,5 +1,5 @@
-from .connect_people import ConnectPeople
+from .invitation_handler import ConnectionHandler
 
 __all__ = [
-    "ConnectPeople"
+    "ConnectionHandler"
 ]
