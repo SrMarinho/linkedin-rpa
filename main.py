@@ -50,6 +50,7 @@ def parse_args():
     apply_parser.add_argument("--url", type=str, required=True, help="LinkedIn jobs search URL")
     apply_parser.add_argument("--resume", type=str, default="resume.txt", help="Path to resume file (default: resume.txt)")
     apply_parser.add_argument("--preferences", type=str, default="", help="Job preferences to guide evaluation (e.g. 'prefer backend roles, Python, remote')")
+    apply_parser.add_argument("--level", type=str, default="", help="Required seniority level (e.g. 'junior', 'pleno', 'senior')")
     apply_parser.add_argument("--max-pages", type=int, default=100, help="Max pages to process (default: 100)")
 
     return parser.parse_args()
@@ -62,7 +63,7 @@ def main():
             if args.task == "connect":
                 ConnectionManager(driver, url=args.url, max_pages=args.max_pages).run()
             elif args.task == "apply":
-                JobApplicationManager(driver, url=args.url, resume_path=args.resume, preferences=args.preferences, max_pages=args.max_pages).run()
+                JobApplicationManager(driver, url=args.url, resume_path=args.resume, preferences=args.preferences, level=args.level, max_pages=args.max_pages).run()
             driver.save_screenshot(f"{setting.screenshots_path}.png")
         except Exception as e:
             logger.critical(f"{str(e)}")

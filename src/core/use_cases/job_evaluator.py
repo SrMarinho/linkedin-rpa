@@ -1,13 +1,21 @@
 import asyncio
+from pathlib import Path
 from claude_agent_sdk import query, ClaudeAgentOptions, ResultMessage
 from src.config.settings import logger
 
 
 class JobEvaluator:
-    def __init__(self, resume_path: str, preferences: str = ""):
-        with open(resume_path, "r", encoding="utf-8") as f:
-            self.resume = f.read()
+    def __init__(self, resume_path: str, preferences: str = "", level: str = ""):
+        path = Path(resume_path)
+        if path.suffix.lower() == ".pdf":
+            from pypdf import PdfReader
+            reader = PdfReader(resume_path)
+            self.resume = "\n".join(page.extract_text() or "" for page in reader.pages)
+        else:
+            with open(resume_path, "r", encoding="utf-8") as f:
+                self.resume = f.read()
         self.preferences = preferences
+        self.level = level
 
     def evaluate(self, title: str, description: str) -> bool:
         return asyncio.run(self._evaluate_async(title, description))
@@ -17,6 +25,13 @@ class JobEvaluator:
             f"\nCANDIDATE PREFERENCES (prioritize these):\n{self.preferences}\n"
             if self.preferences
             else ""
+        )
+
+        level_rule = (
+            f"2. Seniority level: only accept jobs explicitly targeting '{self.level}' level. "
+            f"If the job is clearly for a different level (e.g. Pleno or Sênior when '{self.level}' is requested), answer NO.\n"
+            if self.level
+            else "2. Seniority level: accept any level.\n"
         )
 
         prompt = f"""You are a career advisor. Evaluate if this job is a good match for the candidate.
@@ -29,8 +44,14 @@ JOB TITLE: {title}
 JOB DESCRIPTION:
 {description}
 
+Rules:
+1. The job description must be written in Portuguese (pt-BR). If it is in English, Spanish, or any other language, answer NO.
+{level_rule}3. Focus on: required technologies, remote vs on-site, contract type, and whether it aligns with the candidate's preferences.
+
 Answer with YES or NO followed by one line of reasoning. Be concise.
-Example: YES - The candidate has 3+ years of Python experience matching the requirements.
+Example: YES - The candidate has Python/FastAPI experience matching the requirements and the role is remote.
+Example: NO - Job description is in English, not Portuguese.
+Example: NO - The job is for Pleno level, not Junior as requested.
 Example: NO - The job requires Java expertise which the candidate lacks."""
 
         result = ""

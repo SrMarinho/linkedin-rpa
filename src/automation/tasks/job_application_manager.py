@@ -3,6 +3,8 @@ from selenium.webdriver.remote.webdriver import WebDriver
 from src.automation.pages.jobs_search_page import JobsSearchPage
 from src.core.use_cases.job_evaluator import JobEvaluator
 from src.core.use_cases.job_application_handler import JobApplicationHandler
+from src.core.use_cases.salary_estimator import SalaryEstimator
+from src.core.use_cases.applied_jobs_tracker import AppliedJobsTracker
 from src.config.settings import logger
 
 
@@ -15,14 +17,17 @@ class JobApplicationManager:
         url: str,
         resume_path: str,
         preferences: str = "",
+        level: str = "",
         max_pages: int = 100,
     ):
         self.driver = driver
         self.base_url = url
         self.max_pages = max_pages
         self.page = JobsSearchPage(driver, url)
-        self.evaluator = JobEvaluator(resume_path, preferences=preferences)
-        self.handler = JobApplicationHandler(driver)
+        self.evaluator = JobEvaluator(resume_path, preferences=preferences, level=level)
+        self.salary_estimator = SalaryEstimator()
+        self.handler = JobApplicationHandler(driver, resume=self.evaluator.resume)
+        self.tracker = AppliedJobsTracker()
         self.applied_count = 0
         self.evaluated_count = 0
 
@@ -47,16 +52,26 @@ class JobApplicationManager:
         )
 
     def _process_jobs(self, job_cards):
-        for i, card in enumerate(job_cards):
+        count = len(job_cards)
+        for i in range(count):
             try:
-                card.click()
+                # Re-fetch cards each iteration to avoid stale element references
+                cards = self.page.get_job_cards()
+                if i >= len(cards):
+                    break
+                cards[i].click()
                 time.sleep(1.5)
 
+                job_url = self.driver.current_url
                 title = self.page.get_job_title()
                 description = self.page.get_job_description()
 
                 if not title or not description:
                     logger.info(f"Job {i + 1}: Could not extract details, skipping")
+                    continue
+
+                if self.tracker.already_applied(job_url):
+                    logger.info(f"Job {i + 1}: Already applied to '{title}', skipping")
                     continue
 
                 logger.info(f"Job {i + 1}: Evaluating '{title}'")
@@ -71,12 +86,14 @@ class JobApplicationManager:
                     logger.info(f"Job {i + 1}: No Easy Apply button, skipping")
                     continue
 
+                salary = self.salary_estimator.estimate(title, description)
                 logger.info(f"Job {i + 1}: Match! Applying to '{title}'")
                 easy_apply_btn.click()
                 time.sleep(1)
 
-                if self.handler.submit_easy_apply():
+                if self.handler.submit_easy_apply(salary_expectation=salary):
                     self.applied_count += 1
+                    self.tracker.mark_applied(job_url, title, salary)
                     logger.info(f"Applied ({self.applied_count} total)")
 
                 time.sleep(1)

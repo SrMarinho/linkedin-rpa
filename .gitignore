@@ -61,3 +61,4 @@ drivers/**/*
 !drivers/
 screenshots/*
 resume.txt
+applied_jobs.json
