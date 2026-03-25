@@ -48,8 +48,10 @@ class JobsSearchPage:
         try:
             btn = self.driver.find_element(
                 By.XPATH,
-                "//button[contains(@aria-label,'Easy Apply') or "
-                "contains(@aria-label,'Candidatura simplificada')]",
+                "//button["
+                "contains(@aria-label,'Easy Apply to') or "
+                "(contains(@aria-label,'Candidatura simplificada') and not(contains(@aria-label,'Filtro')))"
+                "]",
             )
             if btn.is_displayed() and btn.is_enabled():
                 return btn
