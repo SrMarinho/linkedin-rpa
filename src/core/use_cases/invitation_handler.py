@@ -1,6 +1,6 @@
 import time
 from selenium.common.exceptions import ElementClickInterceptedException
-from src.automation.pages.linkedin_search_page import PeopleSearchPage
+from src.automation.pages.people_search_page import PeopleSearchPage
 from src.config.settings import logger
 
 
@@ -16,7 +16,7 @@ class ConnectionHandler:
                 btn_connect.click()
             except ElementClickInterceptedException:
                 if self.page.is_invite_limit_reached():
-                    logger.warning("Limite de convites do LinkedIn atingido. Encerrando.")
+                    logger.warning("LinkedIn invite limit reached. Stopping.")
                     self.limit_reached = True
                     return
                 self.page.close_modal()
@@ -25,7 +25,7 @@ class ConnectionHandler:
             btn_confirm = self.page.get_confirm_invitation_btn()
             if not btn_confirm:
                 if self.page.is_invite_limit_reached():
-                    logger.warning("Limite de convites do LinkedIn atingido. Encerrando.")
+                    logger.warning("LinkedIn invite limit reached. Stopping.")
                     self.limit_reached = True
                     return
                 self.page.close_modal()

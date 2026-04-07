@@ -61,4 +61,9 @@ drivers/**/*
 !drivers/
 screenshots/*
 resume.txt
+resume.pdf
+resume.pdf.pdf
 applied_jobs.json
+rejected_jobs.json
+rejected_jobs.json
+bot_profile/

@@ -1,11 +1,22 @@
 import time
 from selenium.webdriver.remote.webdriver import WebDriver
 from src.automation.pages.jobs_search_page import JobsSearchPage
+from src.automation.pages.indeed_jobs_page import IndeedJobsPage
+from src.automation.pages.glassdoor_jobs_page import GlassdoorJobsPage
 from src.core.use_cases.job_evaluator import JobEvaluator
 from src.core.use_cases.job_application_handler import JobApplicationHandler
+from src.core.use_cases.indeed_application_handler import IndeedApplicationHandler
 from src.core.use_cases.salary_estimator import SalaryEstimator
 from src.core.use_cases.applied_jobs_tracker import AppliedJobsTracker
 from src.config.settings import logger
+
+
+def _detect_site(url: str) -> str:
+    if "indeed.com" in url:
+        return "indeed"
+    if "glassdoor.com" in url:
+        return "glassdoor"
+    return "linkedin"
 
 
 class JobApplicationManager:
@@ -23,18 +34,37 @@ class JobApplicationManager:
         self.driver = driver
         self.base_url = url
         self.max_pages = max_pages
-        self.page = JobsSearchPage(driver, url)
+        self.site = _detect_site(url)
+
+        if self.site == "indeed":
+            self.page = IndeedJobsPage(driver, url)
+            self.PAGE_SIZE = 10
+        elif self.site == "glassdoor":
+            self.page = GlassdoorJobsPage(driver, url)
+            self.PAGE_SIZE = 30
+        else:
+            self.page = JobsSearchPage(driver, url)
+
         self.evaluator = JobEvaluator(resume_path, preferences=preferences, level=level)
         self.salary_estimator = SalaryEstimator(resume=self.evaluator.resume)
-        self.handler = JobApplicationHandler(driver, resume=self.evaluator.resume)
         self.tracker = AppliedJobsTracker()
         self.applied_count = 0
         self.evaluated_count = 0
 
+        if self.site == "indeed":
+            self.handler = IndeedApplicationHandler(driver, resume=self.evaluator.resume)
+        else:
+            self.handler = JobApplicationHandler(driver, resume=self.evaluator.resume)
+
     def run(self):
+        logger.info(f"Site detected: {self.site}")
         for page_num in range(1, self.max_pages + 1):
-            start = self.PAGE_SIZE * (page_num - 1)
-            url = self.base_url if page_num == 1 else f"{self.base_url}&start={start}"
+            if self.site in ("indeed", "glassdoor"):
+                url = self.page.next_page_url(self.base_url, page_num)
+            else:
+                start = self.PAGE_SIZE * (page_num - 1)
+                url = self.base_url if page_num == 1 else f"{self.base_url}&start={start}"
+
             logger.info(f"Navigating to page {page_num}")
             self.driver.get(url)
             time.sleep(2)
@@ -55,11 +85,18 @@ class JobApplicationManager:
         count = len(job_cards)
         for i in range(count):
             try:
-                # Re-fetch cards each iteration to avoid stale element references
                 cards = self.page.get_job_cards()
                 if i >= len(cards):
                     break
-                cards[i].click()
+                card = cards[i]
+                if hasattr(self.page, 'close_modal'):
+                    self.page.close_modal()
+                self.driver.execute_script("arguments[0].scrollIntoView({block:'center'});", card)
+                time.sleep(0.3)
+                try:
+                    card.click()
+                except Exception:
+                    self.driver.execute_script("arguments[0].click();", card)
                 time.sleep(1.5)
 
                 job_url = self.driver.current_url
@@ -74,24 +111,34 @@ class JobApplicationManager:
                     logger.info(f"Job {i + 1}: Already applied to '{title}', skipping")
                     continue
 
+                if self.tracker.already_rejected(job_url):
+                    logger.info(f"Job {i + 1}: Already rejected '{title}', skipping")
+                    continue
+
                 logger.info(f"Job {i + 1}: Evaluating '{title}'")
                 self.evaluated_count += 1
 
                 if not self.evaluator.evaluate(title, description):
                     logger.info(f"Job {i + 1}: Not a match, skipping")
+                    self.tracker.mark_rejected(job_url, title, reason="AI evaluation: no match")
                     continue
 
-                easy_apply_btn = self.page.get_easy_apply_btn()
-                if not easy_apply_btn:
-                    logger.info(f"Job {i + 1}: No Easy Apply button, skipping")
+                apply_btn = self.page.get_apply_btn() if self.site in ("indeed", "glassdoor") else self.page.get_easy_apply_btn()
+                if not apply_btn:
+                    logger.info(f"Job {i + 1}: No apply button, skipping")
                     continue
 
                 salary = self.salary_estimator.estimate(title, description)
                 logger.info(f"Job {i + 1}: Match! Applying to '{title}'")
-                easy_apply_btn.click()
-                time.sleep(1)
+                apply_btn.click()
+                time.sleep(1.5)
 
-                if self.handler.submit_easy_apply(salary_expectation=salary):
+                if self.site == "indeed":
+                    success = self.handler.submit(salary_expectation=salary)
+                else:
+                    success = self.handler.submit_easy_apply(salary_expectation=salary)
+
+                if success:
                     self.applied_count += 1
                     self.tracker.mark_applied(job_url, title, salary)
                     logger.info(f"Applied ({self.applied_count} total)")

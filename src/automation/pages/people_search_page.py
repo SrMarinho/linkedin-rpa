@@ -30,21 +30,21 @@ class PeopleSearchPage:
             try:
                 ActionChains(self.driver).send_keys(Keys.ESCAPE).perform()
             except Exception:
-                logger.error("Sem modal para fechar")
+                logger.error("No modal to close")
 
     def get_confirm_invitation_btn(self) -> WebElement | None:
-        logger.info("Aguardando modal de convite")
+        logger.info("Waiting for invitation modal")
         try:
             WebDriverWait(self.driver, 5).until(
                 lambda d: d.find_element(By.CSS_SELECTOR, "[data-test-modal-container]")
             )
         except Exception:
-            logger.error("Nenhum modal apareceu após clicar em Conectar")
+            logger.error("No modal appeared after clicking Connect")
             return None
 
         try:
             self.driver.find_element(By.CSS_SELECTOR, "button[aria-label='Retirar convite']")
-            logger.info("Modal de 'Retirar convite' detectado, pulando")
+            logger.info("'Withdraw invite' modal detected, skipping")
             return None
         except Exception:
             pass
@@ -54,17 +54,17 @@ class PeopleSearchPage:
                 By.CSS_SELECTOR, "button[aria-label='Enviar sem nota']"
             )
             if btn.get_attribute("disabled"):
-                logger.info("Botão 'Enviar sem nota' desabilitado")
+                logger.info("'Send without note' button is disabled")
                 return None
             return btn
         except Exception as e:
-            logger.error(f"Botão 'Enviar sem nota' não encontrado. {e}")
+            logger.error(f"'Send without note' button not found. {e}")
         return None
 
     def get_connect_btn(self) -> WebElement | None:
         time.sleep(0.2)
         try:
-            logger.info("Procurando botão para conectar")
+            logger.info("No target found yet, continuing...")
             btn = WebDriverWait(self.driver, 10).until(
                 lambda d: d.find_element(
                     By.XPATH,
@@ -74,5 +74,5 @@ class PeopleSearchPage:
             time.sleep(0.2)
             return btn
         except Exception:
-            logger.info("Sem botões de conectar na página")
+            logger.info("No connect buttons found on page")
         return None

@@ -14,11 +14,11 @@ class ConnectionManager:
     def run(self):
         for page in range(1, self.max_pages + 1):
             url = self.base_url if page == 1 else f"{self.base_url}&page={page}"
-            logger.info(f"Navegando para página {page}")
+            logger.info(f"Navigating to page {page}")
             self.driver.get(url)
             self.connect_people.run()
 
             if self.connect_people.limit_reached:
                 break
 
-        logger.info(f"Número de pessoas conectadas: {self.connect_people.invite_sended}")
+        logger.info(f"Total connections sent: {self.connect_people.invite_sended}")

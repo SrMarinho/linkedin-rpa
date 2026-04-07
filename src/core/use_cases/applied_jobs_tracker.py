@@ -5,43 +5,74 @@ from pathlib import Path
 from src.config.settings import logger
 
 APPLIED_JOBS_FILE = Path("applied_jobs.json")
+REJECTED_JOBS_FILE = Path("rejected_jobs.json")
 
 
 class AppliedJobsTracker:
     def __init__(self):
-        self._data: dict = self._load()
+        self._applied: dict = self._load(APPLIED_JOBS_FILE)
+        self._rejected: dict = self._load(REJECTED_JOBS_FILE)
 
-    def _load(self) -> dict:
-        if APPLIED_JOBS_FILE.exists():
+    def _load(self, path: Path) -> dict:
+        if path.exists():
             try:
-                return json.loads(APPLIED_JOBS_FILE.read_text(encoding="utf-8"))
+                return json.loads(path.read_text(encoding="utf-8"))
             except Exception:
                 pass
         return {}
 
-    def _save(self):
+    def _save_applied(self):
         APPLIED_JOBS_FILE.write_text(
-            json.dumps(self._data, ensure_ascii=False, indent=2),
+            json.dumps(self._applied, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+
+    def _save_rejected(self):
+        REJECTED_JOBS_FILE.write_text(
+            json.dumps(self._rejected, ensure_ascii=False, indent=2),
             encoding="utf-8",
         )
 
     def _job_id(self, url: str) -> str:
-        """Extract LinkedIn job ID from URL, fallback to sanitized URL."""
+        """Extract a stable job ID from URL. Tries common patterns, falls back to sanitized URL."""
+        # LinkedIn: currentJobId=123 or /jobs/view/123
         match = re.search(r"currentJobId=(\d+)|/jobs/view/(\d+)", url)
         if match:
             return match.group(1) or match.group(2)
+        # Indeed: /viewjob?jk=abc123
+        match = re.search(r"[?&]jk=([a-zA-Z0-9]+)", url)
+        if match:
+            return match.group(1)
+        # Gupy: /jobs/NNN
+        match = re.search(r"/jobs/(\d+)", url)
+        if match:
+            return match.group(1)
         return re.sub(r"[^a-z0-9]", "_", url.lower())[:80]
 
     def already_applied(self, job_url: str) -> bool:
-        return self._job_id(job_url) in self._data
+        return self._job_id(job_url) in self._applied
+
+    def already_rejected(self, job_url: str) -> bool:
+        return self._job_id(job_url) in self._rejected
 
     def mark_applied(self, job_url: str, title: str, salary: int | None = None):
         job_id = self._job_id(job_url)
-        self._data[job_id] = {
+        self._applied[job_id] = {
             "title": title,
             "url": job_url,
             "applied_at": datetime.now().isoformat(),
             "salary_offered": salary,
         }
-        self._save()
+        self._save_applied()
         logger.info(f"Saved application: '{title}' (id={job_id})")
+
+    def mark_rejected(self, job_url: str, title: str, reason: str = ""):
+        job_id = self._job_id(job_url)
+        self._rejected[job_id] = {
+            "title": title,
+            "url": job_url,
+            "rejected_at": datetime.now().isoformat(),
+            "reason": reason,
+        }
+        self._save_rejected()
+        logger.debug(f"Saved rejection: '{title}' (id={job_id})")

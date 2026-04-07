@@ -1,139 +1,133 @@
-# LinkedIn RPA
+# JobPilot
 
-Automação do LinkedIn para envio de convites de conexão e candidatura a vagas via Easy Apply, com avaliação inteligente usando Claude AI.
+Automated job application bot with AI-powered evaluation. Currently supports LinkedIn (Easy Apply + connection requests), with an architecture designed to add new job boards.
 
-## Funcionalidades
+## Features
 
-- **Conexões**: envia convites automaticamente para pessoas em uma busca do LinkedIn
-- **Candidaturas**: avalia vagas com base no seu currículo e se candidata via Easy Apply
-  - Avalia idioma da vaga (apenas pt-BR)
-  - Respeita nível de senioridade desejado
-  - Estima pretensão salarial com base na vaga e no mercado
-  - Responde perguntas customizadas do formulário usando IA
-  - Registra vagas já candidatadas para não repetir
+- **Apply**: Evaluates jobs against your resume and applies automatically
+  - Filters by language (pt-BR only by default)
+  - Filters by seniority level
+  - Estimates salary expectation based on job and market data
+  - Answers custom form questions using AI
+  - Tracks applied jobs to avoid duplicates
+- **Connect**: Sends connection requests automatically (LinkedIn)
 
-## Pré-requisitos
+## Requirements
 
 - Python 3.12+
-- [uv](https://docs.astral.sh/uv/) (gerenciador de pacotes)
-- Google Chrome instalado
-- Conta no LinkedIn (já logada no Chrome)
-- Claude Code com plano Pro ativo (usado pela IA de avaliação)
+- [uv](https://docs.astral.sh/uv/)
+- Google Chrome
+- Account already logged in on Chrome
+- Claude Code with Pro plan (used by the AI evaluator)
 
-## Instalação
+## Installation
 
 ```bash
-git clone https://github.com/SrMarinho/linkedin-rpa.git
-cd linkedin-rpa
+git clone https://github.com/SrMarinho/jobpilot.git
+cd jobpilot
 uv sync
 ```
 
-## Configuração
+## Configuration
 
-Crie um arquivo `.env` na raiz do projeto:
+Create a `.env` file at the project root:
 
 ```env
 HEADLESS=FALSE
 ```
 
-> Defina `HEADLESS=TRUE` para rodar o Chrome em segundo plano (sem janela visível).
+> Set `HEADLESS=TRUE` to run Chrome in the background (no visible window).
 
-## Uso
+## Usage
 
-### Enviar convites de conexão
-
-```bash
-uv run python main.py connect --url "URL_DA_BUSCA_DE_PESSOAS"
-```
-
-**Parâmetros:**
-
-| Parâmetro | Obrigatório | Descrição |
-|-----------|-------------|-----------|
-| `--url` | Sim | URL da busca de pessoas do LinkedIn |
-| `--max-pages` | Não | Limite de páginas (padrão: 100) |
-
-**Exemplo:**
-```bash
-uv run python main.py connect \
-  --url "https://www.linkedin.com/search/results/people/?keywords=recrutador&network=%5B%22F%22%5D"
-```
-
----
-
-### Candidatar a vagas
+### Apply to jobs
 
 ```bash
-uv run python main.py apply --url "URL_DA_BUSCA_DE_VAGAS" --resume "caminho/para/curriculo.pdf"
+uv run python main.py apply --url "JOB_SEARCH_URL" --resume "path/to/resume.pdf"
 ```
 
-**Parâmetros:**
+| Parameter | Required | Description |
+|-----------|----------|-------------|
+| `--url` | Yes | Job search URL (LinkedIn: enable Easy Apply filter with `f_AL=true`) |
+| `--resume` | No | Path to resume PDF or TXT (default: `resume.txt`) |
+| `--preferences` | No | Preferences to guide evaluation (e.g. `'prefer backend, Python, remote'`) |
+| `--level` | No | Seniority level: `junior`, `pleno`, `senior` |
+| `--max-pages` | No | Max pages to process (default: 100) |
 
-| Parâmetro | Obrigatório | Descrição |
-|-----------|-------------|-----------|
-| `--url` | Sim | URL da busca de vagas do LinkedIn (com filtro Easy Apply ativo) |
-| `--resume` | Não | Caminho para o currículo em PDF ou TXT (padrão: `resume.txt`) |
-| `--preferences` | Não | Preferências para guiar a avaliação |
-| `--level` | Não | Nível de senioridade desejado: `junior`, `pleno`, `senior` |
-| `--max-pages` | Não | Limite de páginas (padrão: 100) |
-
-**Exemplo:**
+**Example (LinkedIn):**
 ```bash
 uv run python main.py apply \
-  --url "https://www.linkedin.com/jobs/search/?keywords=desenvolvedor+python&f_AL=true" \
-  --resume "C:/Users/seu_usuario/Downloads/Curriculo.pdf" \
-  --preferences "prefiro vagas backend, Python, remoto" \
+  --url "https://www.linkedin.com/jobs/search/?keywords=python+developer&f_AL=true" \
+  --resume "resume.pdf" \
+  --preferences "prefer backend, Python, remote" \
   --level junior
 ```
 
-> **Dica:** Use o filtro **"Candidatura simplificada"** (`f_AL=true`) na URL para garantir que só apareçam vagas com Easy Apply.
+---
+
+### Send connection requests (LinkedIn)
+
+```bash
+uv run python main.py connect --url "PEOPLE_SEARCH_URL"
+```
+
+| Parameter | Required | Description |
+|-----------|----------|-------------|
+| `--url` | Yes | LinkedIn people search URL |
+| `--max-pages` | No | Max pages to process (default: 100) |
 
 ---
 
-## Como funciona o fluxo de candidatura
+## How the apply flow works
 
 ```
-Para cada vaga encontrada:
-  1. Verifica se já se candidatou anteriormente (applied_jobs.json)
-  2. Avalia com IA:
-     - Idioma da vaga (apenas pt-BR)
-     - Nível de senioridade (se --level informado)
-     - Fit técnico com o currículo
-     - Alinhamento com as preferências
-  3. Se aprovada:
-     - Estima a pretensão salarial com base na vaga e no mercado
-     - Clica em "Candidatura simplificada"
-     - Preenche o formulário (salário, perguntas customizadas via IA)
-     - Envia a candidatura
-     - Salva em applied_jobs.json
+For each job found:
+  1. Check if already applied (applied_jobs.json)
+  2. AI evaluates:
+     - Job language (pt-BR only by default)
+     - Seniority level match (if --level provided)
+     - Technical fit with resume
+     - Alignment with preferences
+  3. If approved:
+     - Estimate salary expectation
+     - Click apply button
+     - Fill form fields (salary, custom questions via AI)
+     - Submit
+     - Save to applied_jobs.json
 ```
 
-## Arquivos locais gerados
+## Local files generated
 
-| Arquivo | Descrição |
-|---------|-----------|
-| `applied_jobs.json` | Registro de todas as candidaturas enviadas |
-| `screenshots.png` | Screenshot tirado ao final da execução |
+| File | Description |
+|------|-------------|
+| `applied_jobs.json` | Record of all submitted applications |
+| `screenshots.png` | Screenshot taken at the end of execution |
 
-> Esses arquivos estão no `.gitignore` e não são enviados ao repositório.
+> These files are in `.gitignore` and are not committed to the repository.
 
-## Estrutura do projeto
+## Project structure
 
 ```
-linkedin_rpa/
-├── main.py                              # Ponto de entrada e CLI
-├── src/
-│   ├── automation/
-│   │   ├── pages/
-│   │   │   ├── linkedin_search_page.py  # Page object da busca de pessoas
-│   │   │   └── jobs_search_page.py      # Page object da busca de vagas
-│   │   └── tasks/
-│   │       ├── connection_manager.py        # Orquestra envio de conexões
-│   │       └── job_application_manager.py   # Orquestra candidaturas
-│   └── core/
-│       └── use_cases/
-│           ├── job_evaluator.py             # Avalia fit da vaga com IA
-│           ├── salary_estimator.py          # Estima pretensão salarial com IA
-│           ├── job_application_handler.py   # Preenche e envia o Easy Apply
-│           └── applied_jobs_tracker.py      # Persiste candidaturas enviadas
+jobpilot/
+├── main.py                                   # Entry point and CLI
+└── src/
+    ├── automation/
+    │   ├── pages/                            # Site-specific page objects
+    │   │   ├── people_search_page.py         # LinkedIn people search
+    │   │   └── jobs_search_page.py           # LinkedIn jobs search
+    │   └── tasks/                            # Orchestration layer
+    │       ├── connection_manager.py
+    │       └── job_application_manager.py
+    └── core/
+        └── use_cases/                        # Site-agnostic business logic
+            ├── job_evaluator.py              # AI job evaluation
+            ├── salary_estimator.py           # AI salary estimation
+            ├── job_application_handler.py    # Form filling and submission
+            └── applied_jobs_tracker.py       # Persistence layer
 ```
+
+### Adding a new job board
+
+1. Create a new page object under `src/automation/pages/` implementing the same interface as `JobsSearchPage`
+2. Instantiate it in `JobApplicationManager` based on the URL domain
+3. The core use cases (`JobEvaluator`, `SalaryEstimator`, etc.) work unchanged

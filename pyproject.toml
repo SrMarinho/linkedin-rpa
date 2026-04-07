@@ -1,5 +1,5 @@
 [project]
-name = "linkedin-rpa"
+name = "jobpilot"
 version = "0.1.0"
 description = "Add your description here"
 readme = "README.md"
@@ -10,4 +10,6 @@ dependencies = [
     "selenium>=4.38.0",
     "claude-agent-sdk>=0.0.14",
     "pypdf>=5.0.0",
+    "undetected-chromedriver>=3.5.5",
+    "setuptools>=82.0.1",
 ]
