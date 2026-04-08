@@ -1,5 +1,7 @@
 import threading
 import os
+import argparse
+import shlex
 import requests
 from src.config.settings import logger
 
@@ -71,7 +73,10 @@ class TelegramBot:
 
         elif cmd == "/connect":
             if not arg:
-                self.send("Uso: /connect &lt;url&gt;")
+                self.send(
+                    "Uso: /connect &lt;url&gt; [--start-page N] [--max-pages N]\n\n"
+                    "Exemplo:\n<code>/connect https://linkedin.com/... --start-page 5 --max-pages 20</code>"
+                )
                 return
             self._start_task("connect", arg)
 
@@ -84,25 +89,48 @@ class TelegramBot:
         else:
             self.send("Comando não reconhecido. Digite /help.")
 
-    def _start_task(self, task: str, url: str) -> None:
+    def _parse_connect_args(self, arg: str) -> tuple[str, int, int] | None:
+        parser = argparse.ArgumentParser(exit_on_error=False)
+        parser.add_argument("url")
+        parser.add_argument("--start-page", type=int, default=1)
+        parser.add_argument("--max-pages", type=int, default=100)
+        try:
+            parsed = parser.parse_args(shlex.split(arg))
+            return parsed.url, parsed.start_page, parsed.max_pages
+        except Exception:
+            self.send(
+                "❌ Parâmetros inválidos.\n\n"
+                "Uso: /connect &lt;url&gt; [--start-page N] [--max-pages N]"
+            )
+            return None
+
+    def _start_task(self, task: str, arg: str) -> None:
         if self.current_task and self.current_task.is_alive():
             self.send("⚠️ Já tem uma tarefa rodando. Use /stop primeiro.")
             return
         self.stop_event.clear()
-        target = self._run_connect if task == "connect" else self._run_apply
-        label = "🔗 Iniciando conexões..." if task == "connect" else "📋 Iniciando candidaturas..."
-        self.send(label)
-        self.current_task = threading.Thread(target=target, args=(url,), daemon=True)
+        if task == "connect":
+            result = self._parse_connect_args(arg)
+            if not result:
+                return
+            url, start_page, max_pages = result
+            self.send(f"🔗 Iniciando conexões a partir da página {start_page}...")
+            self.current_task = threading.Thread(
+                target=self._run_connect, args=(url, start_page, max_pages), daemon=True
+            )
+        else:
+            self.send("📋 Iniciando candidaturas...")
+            self.current_task = threading.Thread(target=self._run_apply, args=(arg,), daemon=True)
         self.current_task.start()
 
     # ── Task runners ──────────────────────────────────────────────────────────
 
-    def _run_connect(self, url: str) -> None:
+    def _run_connect(self, url: str, start_page: int = 1, max_pages: int = 100) -> None:
         from src.automation.tasks.connection_manager import ConnectionManager
         driver = self.driver_factory()
         manager = None
         try:
-            manager = ConnectionManager(driver, url=url, stop_event=self.stop_event)
+            manager = ConnectionManager(driver, url=url, start_page=start_page, max_pages=max_pages, stop_event=self.stop_event)
             manager.run()
         except Exception as e:
             self.send("❌ Erro ao executar conexões.")
