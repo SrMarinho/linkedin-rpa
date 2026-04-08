@@ -1,7 +1,19 @@
 import threading
 import os
+from pathlib import Path
 import requests
 from src.config.settings import logger
+
+
+def _find_resume(hint: str = "resume.txt") -> str:
+    """Return hint if it exists, otherwise find first .pdf or .txt in cwd."""
+    if Path(hint).exists():
+        return hint
+    for ext in ("*.pdf", "*.txt"):
+        found = list(Path(".").glob(ext))
+        if found:
+            return str(found[0])
+    return hint  # fallback, will raise at read time with a clear error
 
 
 class TelegramBot:
@@ -12,7 +24,8 @@ class TelegramBot:
         self.base_url = f"https://api.telegram.org/bot{self.token}"
         self.offset = 0
         self.driver_factory = driver_factory
-        self.resume_path = resume_path
+        self.resume_path = _find_resume(resume_path)
+        logger.info(f"Resume: {self.resume_path}")
         self.stop_event = threading.Event()
         self.current_task: threading.Thread | None = None
 
