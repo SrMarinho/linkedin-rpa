@@ -57,6 +57,9 @@ def parse_args():
     apply_parser.add_argument("--level", type=str, nargs="+", default=[], help="Accepted seniority levels (e.g. --level junior pleno)")
     apply_parser.add_argument("--max-pages", type=int, default=100, help="Max pages to process (default: 100)")
 
+    bot_parser = subparsers.add_parser("bot", help="Start Telegram bot to control JobPilot remotely")
+    bot_parser.add_argument("--resume", type=str, default="resume.txt", help="Path to resume file (default: resume.txt)")
+
     return parser.parse_args()
 
 
@@ -83,6 +86,11 @@ def main():
 
     if args.task == "login":
         run_login(args.site)
+        return
+
+    if args.task == "bot":
+        from src.bot.telegram_bot import TelegramBot
+        TelegramBot(driver_factory=setup, resume_path=args.resume).run()
         return
 
     driver = setup()

@@ -1,4 +1,5 @@
 import time
+import threading
 from selenium.webdriver.remote.webdriver import WebDriver
 from src.automation.pages.jobs_search_page import JobsSearchPage
 from src.automation.pages.indeed_jobs_page import IndeedJobsPage
@@ -36,6 +37,7 @@ class JobApplicationManager:
         preferences: str = "",
         level: str = "",
         max_pages: int = 100,
+        stop_event: threading.Event | None = None,
     ):
         self.driver = driver
         self.base_url = url
@@ -55,6 +57,7 @@ class JobApplicationManager:
         self.evaluator = JobEvaluator(resume_path, preferences=preferences, level=level)
         self.salary_estimator = SalaryEstimator(resume=self.evaluator.resume)
         self.tracker = AppliedJobsTracker()
+        self.stop_event = stop_event or threading.Event()
         self.applied_count = 0
         self.evaluated_count = 0
 
@@ -66,6 +69,9 @@ class JobApplicationManager:
     def run(self):
         logger.info(f"Site detected: {self.site}")
         for page_num in range(1, self.max_pages + 1):
+            if self.stop_event.is_set():
+                logger.info("Stop requested, halting job application manager")
+                break
             if self.site in ("indeed", "glassdoor"):
                 url = self.page.next_page_url(self.base_url, page_num)
             else:
