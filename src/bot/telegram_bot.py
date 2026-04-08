@@ -6,13 +6,14 @@ from src.config.settings import logger
 
 
 def _find_resume(hint: str = "resume.txt") -> str:
-    """Return hint if it exists, otherwise find first .pdf or .txt in cwd."""
+    """Return hint if it exists, otherwise find first .pdf or .txt in files/ or cwd."""
     if Path(hint).exists():
         return hint
-    for ext in ("*.pdf", "*.txt"):
-        found = list(Path(".").glob(ext))
-        if found:
-            return str(found[0])
+    for directory in (Path("files"), Path(".")):
+        for ext in ("*.pdf", "*.txt"):
+            found = list(directory.glob(ext))
+            if found:
+                return str(found[0])
     return hint  # fallback, will raise at read time with a clear error
 
 
@@ -107,7 +108,7 @@ class TelegramBot:
                 f"https://api.telegram.org/file/bot{self.token}/{file_path}",
                 timeout=30,
             ).content
-            dest = Path(name)
+            dest = Path("files") / name
             dest.write_bytes(content)
             self.resume_path = str(dest)
             self._step = ""

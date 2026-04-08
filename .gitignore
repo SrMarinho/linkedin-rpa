@@ -59,11 +59,7 @@ temp/
 # Arquivos do projeto
 drivers/**/*
 !drivers/
-screenshots/*
-resume.txt
-resume.pdf
-resume.pdf.pdf
-applied_jobs.json
-rejected_jobs.json
-rejected_jobs.json
+files/*
+!files/.gitkeep
+screenshots.png
 bot_profile/
