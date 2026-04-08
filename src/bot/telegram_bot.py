@@ -87,6 +87,32 @@ class TelegramBot:
         except Exception:
             return []
 
+    def _handle_document(self, doc: dict) -> None:
+        name = doc.get("file_name", "")
+        if not (name.endswith(".pdf") or name.endswith(".txt")):
+            self.send("❌ Envie o currículo em PDF ou TXT.")
+            return
+        try:
+            file_info = requests.get(
+                f"{self.base_url}/getFile",
+                params={"file_id": doc["file_id"]},
+                timeout=10,
+            ).json()["result"]
+            file_path = file_info["file_path"]
+            content = requests.get(
+                f"https://api.telegram.org/file/bot{self.token}/{file_path}",
+                timeout=30,
+            ).content
+            ext = ".pdf" if name.endswith(".pdf") else ".txt"
+            dest = Path(f"resume{ext}")
+            dest.write_bytes(content)
+            self.resume_path = str(dest)
+            self.send(f"✅ Currículo atualizado: <code>{dest.name}</code>")
+            logger.info(f"Resume updated: {dest}")
+        except Exception as e:
+            self.send("❌ Erro ao salvar o currículo.")
+            logger.error(f"Failed to save resume: {e}")
+
     # ── Command handling ──────────────────────────────────────────────────────
 
     def _handle(self, text: str) -> None:
@@ -314,7 +340,14 @@ class TelegramBot:
                 msg = update.get("message", {})
                 chat_id = str(msg.get("chat", {}).get("id", ""))
                 text = msg.get("text", "")
-                if chat_id != self.admin_id or not text:
+                if chat_id != self.admin_id:
+                    continue
+
+                if "document" in msg:
+                    self._handle_document(msg["document"])
+                    continue
+
+                if not text:
                     continue
 
                 if self._step:
