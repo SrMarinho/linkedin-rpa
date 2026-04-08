@@ -11,6 +11,7 @@ Automated job application bot with AI-powered evaluation. Currently supports Lin
   - Answers custom form questions using AI
   - Tracks applied jobs to avoid duplicates
 - **Connect**: Sends connection requests automatically (LinkedIn)
+- **Bot**: Control JobPilot remotely via Telegram — start/stop tasks, check status, and receive notifications for every application sent
 
 ## Requirements
 
@@ -34,9 +35,20 @@ Create a `.env` file at the project root:
 
 ```env
 HEADLESS=FALSE
+
+# Telegram (optional — required for bot mode and notifications)
+TELEGRAM_BOT_TOKEN=your_bot_token
+TELEGRAM_CHAT_ID=your_channel_id   # channel/group for notifications
+TELEGRAM_ADMIN_ID=your_personal_id # your personal chat ID for commands
 ```
 
 > Set `HEADLESS=TRUE` to run Chrome in the background (no visible window).
+
+To get your `TELEGRAM_ADMIN_ID`, send any message to your bot and open:
+```
+https://api.telegram.org/bot<TOKEN>/getUpdates
+```
+Your `chat.id` will appear in the response.
 
 ## Usage
 
@@ -76,6 +88,26 @@ uv run python main.py connect --url "PEOPLE_SEARCH_URL"
 | `--url` | Yes | LinkedIn people search URL |
 | `--start-page` | No | Page to start from (default: 1) |
 | `--max-pages` | No | Max pages to process (default: 100) |
+
+---
+
+### Telegram Bot
+
+Start the bot to control JobPilot remotely via Telegram:
+
+```bash
+uv run main.py bot
+```
+
+| Command | Description |
+|---------|-------------|
+| `/connect <url>` | Start sending connection requests |
+| `/apply <url>` | Start applying to jobs |
+| `/status` | Check if a task is running |
+| `/stop` | Stop the current task |
+| `/help` | List all commands |
+
+The bot also sends a Telegram notification to your channel every time an application is submitted.
 
 ---
 
@@ -119,12 +151,16 @@ jobpilot/
     │   └── tasks/                            # Orchestration layer
     │       ├── connection_manager.py
     │       └── job_application_manager.py
-    └── core/
-        └── use_cases/                        # Site-agnostic business logic
-            ├── job_evaluator.py              # AI job evaluation
-            ├── salary_estimator.py           # AI salary estimation
-            ├── job_application_handler.py    # Form filling and submission
-            └── applied_jobs_tracker.py       # Persistence layer
+    ├── bot/
+    │   └── telegram_bot.py                   # Telegram bot (polling + command handling)
+    ├── core/
+    │   └── use_cases/                        # Site-agnostic business logic
+    │       ├── job_evaluator.py              # AI job evaluation
+    │       ├── salary_estimator.py           # AI salary estimation
+    │       ├── job_application_handler.py    # Form filling and submission
+    │       └── applied_jobs_tracker.py       # Persistence layer
+    └── utils/
+        └── telegram.py                       # Telegram notification helper
 ```
 
 ### Adding a new job board
