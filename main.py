@@ -106,10 +106,11 @@ def parse_args():
 
     apply_parser = subparsers.add_parser("apply", help="Apply to jobs via Easy Apply")
     apply_parser.add_argument("--url", type=str, default=None, help="Job search URL (uses last saved URL if omitted)")
-    apply_parser.add_argument("--resume", type=str, default="resume.txt", help="Path to resume file (default: resume.txt)")
+    apply_parser.add_argument("--resume", type=str, default=None, help="Path to resume file (default: resume.txt)")
     apply_parser.add_argument("--preferences", type=str, default="", help="Job preferences to guide evaluation")
     apply_parser.add_argument("--level", type=str, nargs="+", default=[], help="Accepted seniority levels (e.g. --level junior pleno)")
     apply_parser.add_argument("--max-pages", type=int, default=100, help="Max pages to process (default: 100)")
+    apply_parser.add_argument("--continue", dest="resume_from", action="store_true", help="Resume from the last page where it stopped")
 
     bot_parser = subparsers.add_parser("bot", help="Start Telegram bot to control JobPilot remotely")
     bot_parser.add_argument("--resume", type=str, default="resume.txt", help="Path to resume file (default: resume.txt)")
@@ -154,12 +155,12 @@ def main():
 
     url = args.url
     start_page = args.start_page if hasattr(args, "start_page") and args.start_page is not None else 1
-    resume = getattr(args, "resume", False)
+    resume_from = getattr(args, "resume_from", False) or getattr(args, "resume", False)
 
     # apply-specific persisted options
     level = getattr(args, "level", []) or saved.get("level", [])
     preferences = getattr(args, "preferences", "") or saved.get("preferences", "")
-    resume_path = getattr(args, "resume", "resume.txt") or saved.get("resume", "resume.txt")
+    resume_path = getattr(args, "resume", None) or saved.get("resume", "resume.txt")
 
     if url:
         extra = {}
@@ -171,7 +172,7 @@ def main():
         if not url:
             print(f"Error: --url is required for the first '{args.task}' run (no saved URL found).")
             return
-        if resume:
+        if resume_from:
             start_page = saved.get("page", 1)
             print(f"Resuming '{args.task}' from page {start_page}: {url}")
         else:
@@ -194,7 +195,10 @@ def main():
         save_ran_today()
 
     def on_page_change(page: int):
-        save_last_url(args.task, url, page=page)
+        extra = None
+        if args.task == "apply":
+            extra = {"level": level, "preferences": preferences, "resume": resume_path}
+        save_last_url(args.task, url, page=page, extra=extra)
 
     driver = setup(force_headless=getattr(args, "headless", False))
     try:
@@ -205,7 +209,7 @@ def main():
                 save_weekly_limit_reached()
                 logger.info("Weekly limit reached — saved. Will skip until next week.")
         elif args.task == "apply":
-            JobApplicationManager(driver, url=url, resume_path=resume_path, preferences=preferences, level=level, max_pages=args.max_pages).run()
+            JobApplicationManager(driver, url=url, resume_path=resume_path, preferences=preferences, level=level, max_pages=args.max_pages, start_page=start_page, on_page_change=on_page_change).run()
         try:
             driver.save_screenshot(f"{setting.screenshots_path}.png")
         except Exception:

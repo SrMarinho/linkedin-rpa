@@ -62,4 +62,10 @@ drivers/**/*
 files/*
 !files/.gitkeep
 screenshots.png
+screenshots/
 bot_profile/
+resume.pdf
+resume.txt
+*.pdf
+applied_jobs.json
+rejected_jobs.json

@@ -36,11 +36,15 @@ class JobApplicationManager:
         preferences: str = "",
         level: str = "",
         max_pages: int = 100,
+        start_page: int = 1,
         stop_event: threading.Event | None = None,
+        on_page_change=None,
     ):
         self.driver = driver
         self.base_url = url
         self.max_pages = max_pages
+        self.start_page = start_page
+        self.on_page_change = on_page_change
         self.site = _detect_site(url)
         self.base_url = _normalize_url(url, self.site)
 
@@ -66,7 +70,7 @@ class JobApplicationManager:
 
     def run(self):
         logger.info(f"Site detected: {self.site}")
-        for page_num in range(1, self.max_pages + 1):
+        for page_num in range(self.start_page, self.start_page + self.max_pages):
             if self.stop_event.is_set():
                 logger.info("Stop requested, halting job application manager")
                 break
@@ -76,6 +80,8 @@ class JobApplicationManager:
                 start = self.PAGE_SIZE * (page_num - 1)
                 url = self.base_url if page_num == 1 else f"{self.base_url}&start={start}"
 
+            if self.on_page_change:
+                self.on_page_change(page_num)
             logger.info(f"Navigating to page {page_num}")
             self.driver.get(url)
             time.sleep(2)
