@@ -50,25 +50,43 @@ https://api.telegram.org/bot<TOKEN>/getUpdates
 ```
 Your `chat.id` will appear in the response.
 
+## Login
+
+Before running any task, log in to LinkedIn (or other supported sites) once so the session is saved to the browser profile:
+
+```bash
+uv run main.py login linkedin
+```
+
+A browser window will open. Log in normally, then close it. The session is persisted in `bot_profile/` and reused on every subsequent run.
+
 ## Usage
+
+> **Tip:** The first time you run `connect` or `apply`, you must pass `--url`. After that, the URL is saved locally in `files/last_urls.json` and you can omit it in future runs.
+
+---
 
 ### Apply to jobs
 
 ```bash
-uv run python main.py apply --url "JOB_SEARCH_URL" --resume "path/to/resume.pdf"
+# First run — URL required
+uv run main.py apply --url "JOB_SEARCH_URL" --resume "path/to/resume.pdf"
+
+# Subsequent runs — reuses last saved URL
+uv run main.py apply
 ```
 
 | Parameter | Required | Description |
 |-----------|----------|-------------|
-| `--url` | Yes | Job search URL (LinkedIn: enable Easy Apply filter with `f_AL=true`) |
+| `--url` | First run only | Job search URL (LinkedIn: enable Easy Apply filter with `f_AL=true`) |
 | `--resume` | No | Path to resume PDF or TXT (default: `resume.txt`) |
 | `--preferences` | No | Preferences to guide evaluation (e.g. `'prefer backend, Python, remote'`) |
-| `--level` | No | Seniority level: `junior`, `pleno`, `senior` |
+| `--level` | No | Seniority level filter: `junior`, `pleno`, `senior` |
 | `--max-pages` | No | Max pages to process (default: 100) |
 
 **Example (LinkedIn):**
 ```bash
-uv run python main.py apply \
+uv run main.py apply \
   --url "https://www.linkedin.com/jobs/search/?keywords=python+developer&f_AL=true" \
   --resume "resume.pdf" \
   --preferences "prefer backend, Python, remote" \
@@ -80,14 +98,24 @@ uv run python main.py apply \
 ### Send connection requests (LinkedIn)
 
 ```bash
-uv run python main.py connect --url "PEOPLE_SEARCH_URL"
+# First run — URL required
+uv run main.py connect --url "PEOPLE_SEARCH_URL"
+
+# Subsequent runs — reuses last saved URL
+uv run main.py connect
+
+# Resume from the last page where it stopped
+uv run main.py connect --continue
 ```
 
 | Parameter | Required | Description |
 |-----------|----------|-------------|
-| `--url` | Yes | LinkedIn people search URL |
+| `--url` | First run only | LinkedIn people search URL |
 | `--start-page` | No | Page to start from (default: 1) |
 | `--max-pages` | No | Max pages to process (default: 100) |
+| `--continue` | No | Resume from the last page where the previous run stopped |
+
+> The current page is saved in real time as the bot runs. If execution is interrupted, `--continue` picks up exactly where it left off.
 
 ---
 
@@ -101,13 +129,16 @@ uv run main.py bot
 
 | Command | Description |
 |---------|-------------|
-| `/connect <url>` | Start sending connection requests |
+| `/connect` | Start sending connection requests (bot will ask for the URL) |
 | `/apply <url>` | Start applying to jobs |
 | `/status` | Check if a task is running |
 | `/stop` | Stop the current task |
+| `/resume` | Upload a new resume file (PDF or TXT) |
+| `/ping` | Check if the bot is alive |
+| `/reiniciar` | Restart the bot process |
 | `/help` | List all commands |
 
-The bot also sends a Telegram notification to your channel every time an application is submitted.
+The bot sends a Telegram notification to your channel every time an application is submitted.
 
 ---
 
@@ -134,6 +165,7 @@ For each job found:
 | File | Description |
 |------|-------------|
 | `applied_jobs.json` | Record of all submitted applications |
+| `files/last_urls.json` | Last URL and page saved per task (`connect`, `apply`) |
 | `screenshots.png` | Screenshot taken at the end of execution |
 
 > These files are in `.gitignore` and are not committed to the repository.

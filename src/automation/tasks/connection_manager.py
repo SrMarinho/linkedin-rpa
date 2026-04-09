@@ -7,12 +7,13 @@ from src.automation.pages import PeopleSearchPage
 from src.config.settings import logger
 
 class ConnectionManager:
-    def __init__(self, driver: WebDriver, url: str, max_pages: int = 100, start_page: int = 1, stop_event: threading.Event | None = None):
+    def __init__(self, driver: WebDriver, url: str, max_pages: int = 100, start_page: int = 1, stop_event: threading.Event | None = None, on_page_change=None):
         self.driver = driver
         self.base_url = url
         self.max_pages = max_pages
         self.start_page = start_page
         self.stop_event = stop_event or threading.Event()
+        self.on_page_change = on_page_change
         self.searched_page = PeopleSearchPage(self.driver, url=self.base_url)
         self.connect_people = ConnectionHandler(self.searched_page, stop_event=self.stop_event)
 
@@ -21,6 +22,9 @@ class ConnectionManager:
             if self.stop_event.is_set():
                 logger.info("Stop requested, halting connection manager")
                 break
+
+            if self.on_page_change:
+                self.on_page_change(page)
 
             url = self.base_url if page == 1 else f"{self.base_url}&page={page}"
             logger.info(f"Navigating to page {page}")

@@ -1,4 +1,5 @@
 import os
+import json
 import time
 import argparse
 import src.config.settings as setting
@@ -10,6 +11,21 @@ from dotenv import load_dotenv
 
 
 BOT_PROFILE_DIR = os.path.join(os.path.dirname(__file__), "bot_profile")
+LAST_URLS_FILE = os.path.join(os.path.dirname(__file__), "files", "last_urls.json")
+
+
+def load_last_urls() -> dict:
+    if os.path.exists(LAST_URLS_FILE):
+        with open(LAST_URLS_FILE, "r") as f:
+            return json.load(f)
+    return {}
+
+
+def save_last_url(task: str, url: str, page: int = 1):
+    urls = load_last_urls()
+    urls[task] = {"url": url, "page": page}
+    with open(LAST_URLS_FILE, "w") as f:
+        json.dump(urls, f, indent=2)
 
 
 def get_config() -> dict:
@@ -46,12 +62,13 @@ def parse_args():
     )
 
     connect_parser = subparsers.add_parser("connect", help="Send connection requests")
-    connect_parser.add_argument("--url", type=str, required=True, help="LinkedIn people search URL")
-    connect_parser.add_argument("--start-page", type=int, default=1, help="Page to start from (default: 1)")
+    connect_parser.add_argument("--url", type=str, default=None, help="LinkedIn people search URL (uses last saved URL if omitted)")
+    connect_parser.add_argument("--start-page", type=int, default=None, help="Page to start from (default: 1)")
     connect_parser.add_argument("--max-pages", type=int, default=100, help="Max pages to process (default: 100)")
+    connect_parser.add_argument("--continue", dest="resume", action="store_true", help="Resume from the last page where it stopped")
 
     apply_parser = subparsers.add_parser("apply", help="Apply to jobs via Easy Apply")
-    apply_parser.add_argument("--url", type=str, required=True, help="Job search URL")
+    apply_parser.add_argument("--url", type=str, default=None, help="Job search URL (uses last saved URL if omitted)")
     apply_parser.add_argument("--resume", type=str, default="resume.txt", help="Path to resume file (default: resume.txt)")
     apply_parser.add_argument("--preferences", type=str, default="", help="Job preferences to guide evaluation")
     apply_parser.add_argument("--level", type=str, nargs="+", default=[], help="Accepted seniority levels (e.g. --level junior pleno)")
@@ -93,12 +110,37 @@ def main():
         TelegramBot(driver_factory=setup, resume_path=args.resume).run()
         return
 
+    last_urls = load_last_urls()
+    saved = last_urls.get(args.task, {})
+    if isinstance(saved, str):
+        saved = {"url": saved, "page": 1}
+
+    url = args.url
+    start_page = args.start_page if hasattr(args, "start_page") and args.start_page is not None else 1
+    resume = getattr(args, "resume", False)
+
+    if url:
+        save_last_url(args.task, url, page=1)
+    else:
+        url = saved.get("url")
+        if not url:
+            print(f"Error: --url is required for the first '{args.task}' run (no saved URL found).")
+            return
+        if resume:
+            start_page = saved.get("page", 1)
+            print(f"Resuming '{args.task}' from page {start_page}: {url}")
+        else:
+            print(f"Using last saved URL for '{args.task}': {url}")
+
+    def on_page_change(page: int):
+        save_last_url(args.task, url, page=page)
+
     driver = setup()
     try:
         if args.task == "connect":
-            ConnectionManager(driver, url=args.url, max_pages=args.max_pages, start_page=args.start_page).run()
+            ConnectionManager(driver, url=url, max_pages=args.max_pages, start_page=start_page, on_page_change=on_page_change).run()
         elif args.task == "apply":
-            JobApplicationManager(driver, url=args.url, resume_path=args.resume, preferences=args.preferences, level=args.level, max_pages=args.max_pages).run()
+            JobApplicationManager(driver, url=url, resume_path=args.resume, preferences=args.preferences, level=args.level, max_pages=args.max_pages).run()
         try:
             driver.save_screenshot(f"{setting.screenshots_path}.png")
         except Exception:
