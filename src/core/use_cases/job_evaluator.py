@@ -1,4 +1,5 @@
 import re
+import unicodedata
 import asyncio
 from pathlib import Path
 from claude_agent_sdk import query, ClaudeAgentOptions, ResultMessage
@@ -6,6 +7,18 @@ from src.config.settings import logger
 
 MAX_DESCRIPTION_CHARS = 3000
 HAIKU_MODEL = "claude-haiku-4-5-20251001"
+
+# Keywords in job titles that indicate each seniority level
+_LEVEL_KEYWORDS: dict[str, list[str]] = {
+    "senior":    ["senior", "sênior", "sr.", "sr ", "specialist", "especialista",
+                  "lead", "principal", "staff", "head", "arquiteto", "architect"],
+    "pleno":     ["pleno", "pl.", "mid", "mid-level", "intermediario", "intermediário"],
+    "junior":    ["junior", "júnior", "jr.", "jr ", "trainee", "estagiario",
+                  "estagiário", "estágio", "estagio", "intern"],
+}
+
+def _normalize(s: str) -> str:
+    return unicodedata.normalize("NFKD", s).encode("ascii", "ignore").decode().lower()
 
 
 class JobEvaluator:
@@ -23,6 +36,34 @@ class JobEvaluator:
             self.levels = [level] if level else []
         else:
             self.levels = [l for l in level if l]
+
+    def quick_reject(self, title: str) -> bool:
+        """Returns True if the title can be rejected without an AI call.
+
+        Checks seniority level keywords against the accepted levels.
+        If no levels are configured, never quick-rejects.
+        """
+        if not self.levels:
+            return False
+
+        title_n = _normalize(title)
+        accepted = {_normalize(l) for l in self.levels}
+
+        # Detect which level the title is advertising
+        detected = None
+        for level, keywords in _LEVEL_KEYWORDS.items():
+            if any(kw in title_n for kw in keywords):
+                detected = level
+                break
+
+        if detected is None:
+            return False  # can't tell from title alone — let AI decide
+
+        if detected not in accepted:
+            logger.info(f"Quick reject (title seniority '{detected}' not in {list(accepted)}): '{title}'")
+            return True
+
+        return False
 
     def evaluate(self, title: str, description: str) -> tuple[bool, int | None]:
         """Returns (is_match, salary_estimate). Single AI call using Haiku."""

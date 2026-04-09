@@ -138,6 +138,10 @@ class JobApplicationManager:
                     logger.info(f"Job {i + 1}: Already rejected '{title}', skipping")
                     continue
 
+                if self.evaluator.quick_reject(title):
+                    self.tracker.mark_rejected(job_url, title, reason="Quick reject: title seniority mismatch")
+                    continue
+
                 logger.info(f"Job {i + 1}: Evaluating '{title}'")
                 self.evaluated_count += 1
 
