@@ -146,16 +146,21 @@ The bot sends a Telegram notification to your channel every time an application 
 
 ```
 For each job found:
-  1. Check if already applied (applied_jobs.json)
-  2. AI evaluates:
+  1. Quick reject by title seniority (no AI token spent)
+  2. Check if already applied or rejected (applied_jobs.json / rejected_jobs.json)
+  3. AI evaluates (single Haiku call):
      - Job language (pt-BR only by default)
      - Seniority level match (if --level provided)
      - Technical fit with resume
      - Alignment with preferences
-  3. If approved:
-     - Estimate salary expectation
+     - Estimates salary expectation
+  4. If approved:
      - Click apply button
-     - Fill form fields (salary, custom questions via AI)
+     - Fill form fields:
+         - Salary filled directly from AI evaluation
+         - Other questions checked against files/qa.json first (no AI if cached)
+         - Remaining unknown questions sent to AI in a single batch call
+         - All answers saved back to files/qa.json for future reuse
      - Submit
      - Save to applied_jobs.json
 ```
@@ -165,7 +170,9 @@ For each job found:
 | File | Description |
 |------|-------------|
 | `applied_jobs.json` | Record of all submitted applications |
+| `rejected_jobs.json` | Record of all rejected jobs (skipped by AI or quick reject) |
 | `files/last_urls.json` | Last URL and page saved per task (`connect`, `apply`) |
+| `files/qa.json` | Cached form Q&A — edit manually to correct or pre-fill answers |
 | `screenshots.png` | Screenshot taken at the end of execution |
 
 > These files are in `.gitignore` and are not committed to the repository.
