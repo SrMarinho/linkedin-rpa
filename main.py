@@ -2,6 +2,7 @@ import os
 import json
 import time
 import argparse
+from datetime import date
 import src.config.settings as setting
 import undetected_chromedriver as uc
 from src.automation.tasks.connection_manager import ConnectionManager
@@ -28,14 +29,46 @@ def save_last_url(task: str, url: str, page: int = 1):
         json.dump(urls, f, indent=2)
 
 
-def get_config() -> dict:
+def current_week() -> str:
+    return date.today().strftime("%Y-W%W")
+
+
+def today_str() -> str:
+    return date.today().isoformat()
+
+
+def is_already_ran_today() -> bool:
+    data = load_last_urls()
+    return data.get("connect_last_run_date") == today_str()
+
+
+def save_ran_today():
+    data = load_last_urls()
+    data["connect_last_run_date"] = today_str()
+    with open(LAST_URLS_FILE, "w") as f:
+        json.dump(data, f, indent=2)
+
+
+def is_weekly_limit_reached() -> bool:
+    data = load_last_urls()
+    return data.get("connect_weekly_limit_week") == current_week()
+
+
+def save_weekly_limit_reached():
+    data = load_last_urls()
+    data["connect_weekly_limit_week"] = current_week()
+    with open(LAST_URLS_FILE, "w") as f:
+        json.dump(data, f, indent=2)
+
+
+def get_config(force_headless: bool = False) -> dict:
     env_headless = str(os.getenv("HEADLESS")).upper()
-    headless = False if env_headless == "FALSE" else True
+    headless = force_headless or (False if env_headless == "FALSE" else True)
     return {"headless": headless}
 
 
-def setup() -> uc.Chrome:
-    config = get_config()
+def setup(force_headless: bool = False) -> uc.Chrome:
+    config = get_config(force_headless)
     options = uc.ChromeOptions()
     options.add_argument(f"--user-data-dir={BOT_PROFILE_DIR}")
     options.add_argument("--start-maximized")
@@ -52,6 +85,7 @@ LOGIN_URLS = {
 
 def parse_args():
     parser = argparse.ArgumentParser(description="JobPilot")
+    parser.add_argument("--headless", action="store_true", help="Force headless Chrome (overrides HEADLESS env var)")
     subparsers = parser.add_subparsers(dest="task", required=True)
 
     login_parser = subparsers.add_parser("login", help="Open browser to log in to a job site")
@@ -132,13 +166,28 @@ def main():
         else:
             print(f"Using last saved URL for '{args.task}': {url}")
 
+    if args.task == "connect" and is_already_ran_today():
+        logger.info("Already ran today. Skipping.")
+        return
+
+    if args.task == "connect" and is_weekly_limit_reached():
+        logger.info("Weekly connection limit already reached this week. Skipping.")
+        return
+
+    if args.task == "connect":
+        save_ran_today()
+
     def on_page_change(page: int):
         save_last_url(args.task, url, page=page)
 
-    driver = setup()
+    driver = setup(force_headless=getattr(args, "headless", False))
     try:
         if args.task == "connect":
-            ConnectionManager(driver, url=url, max_pages=args.max_pages, start_page=start_page, on_page_change=on_page_change).run()
+            manager = ConnectionManager(driver, url=url, max_pages=args.max_pages, start_page=start_page, on_page_change=on_page_change)
+            manager.run()
+            if manager.connect_people.limit_reached:
+                save_weekly_limit_reached()
+                logger.info("Weekly limit reached — saved. Will skip until next week.")
         elif args.task == "apply":
             JobApplicationManager(driver, url=url, resume_path=args.resume, preferences=args.preferences, level=args.level, max_pages=args.max_pages).run()
         try:
