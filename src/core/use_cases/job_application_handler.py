@@ -1,6 +1,9 @@
 import json
+import unicodedata
 import asyncio
 import time
+import os
+from pathlib import Path
 from selenium.webdriver.remote.webdriver import WebDriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
@@ -12,6 +15,33 @@ from src.config.settings import logger
 
 HAIKU_MODEL = "claude-haiku-4-5-20251001"
 SALARY_KEYWORDS = ["salário", "salario", "salary", "remuneração", "pretensão", "compensation"]
+
+_QA_FILE = Path(__file__).parent.parent.parent.parent / "files" / "qa.json"
+
+
+def _normalize_question(q: str) -> str:
+    """Normalize question string for use as a stable dict key."""
+    s = unicodedata.normalize("NFKD", q).encode("ascii", "ignore").decode()
+    return " ".join(s.lower().split())
+
+
+def _load_qa() -> dict:
+    try:
+        if _QA_FILE.exists():
+            with open(_QA_FILE, "r", encoding="utf-8") as f:
+                return json.load(f)
+    except Exception:
+        pass
+    return {}
+
+
+def _save_qa(qa: dict) -> None:
+    try:
+        _QA_FILE.parent.mkdir(parents=True, exist_ok=True)
+        with open(_QA_FILE, "w", encoding="utf-8") as f:
+            json.dump(qa, f, ensure_ascii=False, indent=2)
+    except Exception as e:
+        logger.warning(f"Could not save qa.json: {e}")
 
 # React-aware value setter — triggers React's synthetic onChange
 _REACT_SET_VALUE = """
@@ -109,7 +139,45 @@ class JobApplicationHandler:
             if not fields:
                 return
 
-            answers = asyncio.run(self._batch_answer(fields))
+            qa = _load_qa()
+
+            # Resolve fields from cache first; collect remaining for AI
+            cached_answers: dict[str, str] = {}
+            pending_fields: list[dict] = []
+            pending_indices: list[int] = []
+
+            for i, field in enumerate(fields):
+                key = _normalize_question(field["question"])
+                saved = qa.get(key)
+                if saved is not None and str(saved).strip():
+                    cached_answers[str(i)] = str(saved)
+                else:
+                    pending_fields.append(field)
+                    pending_indices.append(i)
+
+            # Single AI call only for fields without cached answers
+            ai_answers: dict[str, str] = {}
+            if pending_fields:
+                raw = asyncio.run(self._batch_answer(pending_fields))
+                # remap local indices back to original indices
+                for local_i, orig_i in enumerate(pending_indices):
+                    val = raw.get(str(local_i))
+                    if val is not None:
+                        ai_answers[str(orig_i)] = str(val)
+
+            answers = {**cached_answers, **ai_answers}
+
+            # Persist all answers (AI + pre-cached) back to qa.json
+            updated_qa = False
+            for i, field in enumerate(fields):
+                answer = answers.get(str(i))
+                if answer:
+                    key = _normalize_question(field["question"])
+                    if qa.get(key) != answer:
+                        qa[key] = answer
+                        updated_qa = True
+            if updated_qa:
+                _save_qa(qa)
 
             for i, field in enumerate(fields):
                 answer = answers.get(str(i))
@@ -170,8 +238,6 @@ Example: {{"0": "3", "1": "Intermediário", "2": "Não"}}"""
 
     def _match_option(self, answer: str, options: list[str]) -> str | None:
         """Find the best matching option for a given answer string."""
-        import unicodedata
-
         def normalize(s: str) -> str:
             s = unicodedata.normalize("NFKD", s).encode("ascii", "ignore").decode()
             return s.lower().strip()
