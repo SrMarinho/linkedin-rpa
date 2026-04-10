@@ -2,15 +2,37 @@ import re
 import unicodedata
 import asyncio
 from pathlib import Path
-from claude_agent_sdk import query, ClaudeAgentOptions, ResultMessage
+from src.core.ai.llm_provider import get_eval_provider
 from src.config.settings import logger
 
 MAX_DESCRIPTION_CHARS = 3000
-HAIKU_MODEL = "claude-haiku-4-5-20251001"
+
+_EN_WORDS = {"the ", " and ", " for ", " with ", " are ", " our ", " you ",
+             " will ", " this ", " that ", " have ", " from ", " your ", " we "}
+_PT_WORDS = {" de ", " para ", " com ", " em ", " que ", " não ", " uma ",
+             " sua ", " seu ", " por ", " das ", " dos ", " uma ", " isso "}
+
+# Tech stacks and their aliases — used for deterministic filtering
+# Each entry: (canonical_name, [keywords_that_identify_it])
+_TECH_ALIASES: list[tuple[str, list[str]]] = [
+    ("python",     ["python", "django", "fastapi", "flask", "sqlalchemy"]),
+    ("node",       ["node.js", "nodejs", "node js", "express", "nestjs", "nest.js"]),
+    ("react",      ["react", "next.js", "nextjs"]),
+    ("vue",        ["vue", "nuxt"]),
+    ("angular",    ["angular"]),
+    ("java",       ["java ", "spring boot", "springboot", "quarkus", " java,"]),
+    ("dotnet",     [".net", "asp.net", "c#", "csharp"]),
+    ("php",        ["php", "laravel", "symfony", "wordpress"]),
+    ("ruby",       ["ruby", "rails"]),
+    ("go",         ["golang", " go ", "go lang"]),
+    ("kotlin",     ["kotlin"]),
+    ("swift",      ["swift", "ios developer"]),
+    ("powerbuilder", ["powerbuilder", "power builder"]),
+]
 
 # Keywords in job titles that indicate each seniority level
 _LEVEL_KEYWORDS: dict[str, list[str]] = {
-    "senior":    ["senior", "sênior", "sr.", "sr ", "specialist", "especialista",
+    "senior":    ["senior", "sênior", "sr.", " sr ", " sr", "specialist", "especialista",
                   "lead", "principal", "staff", "head", "arquiteto", "architect"],
     "pleno":     ["pleno", "pl.", "mid", "mid-level", "intermediario", "intermediário"],
     "junior":    ["junior", "júnior", "jr.", "jr ", "trainee", "estagiario",
@@ -36,6 +58,13 @@ class JobEvaluator:
             self.levels = [level] if level else []
         else:
             self.levels = [l for l in level if l]
+
+        # Detect which tech stacks are required from preferences text
+        prefs_n = _normalize(preferences)
+        self._required_techs: list[str] = [
+            name for name, keywords in _TECH_ALIASES
+            if any(kw in prefs_n for kw in keywords)
+        ]
 
     def quick_reject(self, title: str) -> bool:
         """Returns True if the title can be rejected without an AI call.
@@ -65,11 +94,52 @@ class JobEvaluator:
 
         return False
 
-    def evaluate(self, title: str, description: str) -> tuple[bool, int | None]:
-        """Returns (is_match, salary_estimate). Single AI call using Haiku."""
+    def language_reject(self, description: str) -> bool:
+        """Returns True if the description is clearly not in Portuguese."""
+        text = description[:2000].lower()
+        en = sum(1 for w in _EN_WORDS if w in text)
+        pt = sum(1 for w in _PT_WORDS if w in text)
+        if en >= 4 and pt == 0:
+            logger.info(f"Quick reject (language: likely English — en={en}, pt={pt})")
+            return True
+        return False
+
+    def tech_reject(self, title: str, description: str) -> bool:
+        """Returns True if the job can be rejected based on tech stack mismatch.
+
+        Only active when required techs are detected in preferences.
+        If the description mentions a non-required stack exclusively (no required tech present),
+        the job is rejected without an AI call.
+        """
+        if not self._required_techs:
+            return False
+
+        text_n = _normalize(f"{title} {description}")
+
+        # Check if any required tech appears in the job
+        has_required = any(
+            any(kw in text_n for kw in keywords)
+            for name, keywords in _TECH_ALIASES
+            if name in self._required_techs
+        )
+        if has_required:
+            return False  # required tech found — let AI decide
+
+        # Check if an incompatible tech appears prominently
+        for name, keywords in _TECH_ALIASES:
+            if name in self._required_techs:
+                continue
+            if any(kw in text_n for kw in keywords):
+                logger.info(f"Quick reject (tech mismatch — '{name}' not in required {self._required_techs}): '{title}'")
+                return True
+
+        return False
+
+    def evaluate(self, title: str, description: str) -> tuple[bool, int | None, str]:
+        """Returns (is_match, salary_estimate, reason)."""
         return asyncio.run(self._evaluate_async(title, description))
 
-    async def _evaluate_async(self, title: str, description: str) -> tuple[bool, int | None]:
+    async def _evaluate_async(self, title: str, description: str) -> tuple[bool, int | None, str]:
         description = description[:MAX_DESCRIPTION_CHARS]
 
         preferences_section = (
@@ -86,41 +156,31 @@ class JobEvaluator:
         else:
             level_rule = "2. Seniority: accept any level.\n"
 
-        prompt = f"""You are a career advisor. Evaluate if this job matches the candidate and, if yes, estimate the salary expectation.
+        prompt = f"""Analyze if this job matches the candidate. Answer in the exact format shown.
 
-CANDIDATE RESUME:
+RESUME:
 {self.resume}
 {preferences_section}
 JOB TITLE: {title}
-
 JOB DESCRIPTION:
 {description}
 
-Rules:
-1. Job description must be in Portuguese (pt-BR). If in English/Spanish/other, answer NO.
-{level_rule}3. Check required technologies, remote vs on-site, contract type, and candidate preferences.
+RULES (answer NO if any fails):
+1. Description must be in Portuguese. If English/Spanish → NO.
+{level_rule}3. Technologies and preferences must match.
+4. Must be remote or hybrid inside Brazil.
 
-Market reference (monthly gross, BRL):
-- Junior Dev: CLT R$3.000–6.000 | PJ R$4.000–8.000
-- Pleno Dev: CLT R$6.000–10.000 | PJ R$8.000–14.000
-- Sênior Dev: CLT R$10.000–18.000 | PJ R$14.000–25.000
+Salary reference (BRL/month): Junior CLT 3000-6000 PJ 4000-8000 | Pleno CLT 6000-10000 PJ 8000-14000 | Senior CLT 10000-18000 PJ 14000-25000
 
-IMPORTANT: Reply with ONLY one line in this exact format, no markdown, no extra text:
-YES|<salary_integer>|<reason>
-or
-NO|<reason>
+IMPORTANT: reply with ONLY one line, no extra text:
+If match: YES|<salary number>|<short reason>
+If no match: NO|<short reason>
 
 Examples:
-YES|5000|Candidate has Python/FastAPI experience and role is remote
-NO|Job description is in English"""
+YES|7000|Python/Node backend role, remote, pleno level matches
+NO|Requires Angular, candidate works with Python/Node"""
 
-        result = ""
-        async for message in query(
-            prompt=prompt,
-            options=ClaudeAgentOptions(max_turns=1, model=HAIKU_MODEL),
-        ):
-            if isinstance(message, ResultMessage):
-                result = message.result.strip()
+        result = await get_eval_provider().complete(prompt)
 
         # Robust parsing: find the first line that starts with YES or NO
         is_match = False
@@ -142,4 +202,4 @@ NO|Job description is in English"""
                 break
 
         logger.info(f"Evaluation: {'YES' if is_match else 'NO'} | salary={salary} | {reason}")
-        return is_match, salary
+        return is_match, salary, reason
