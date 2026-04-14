@@ -121,7 +121,63 @@ def parse_args():
     bot_parser = subparsers.add_parser("bot", help="Start Telegram bot to control JobPilot remotely")
     bot_parser.add_argument("--resume", type=str, default="resume.txt", help="Path to resume file (default: resume.txt)")
 
+    provider_parser = subparsers.add_parser("provider", help="Show or change LLM provider settings")
+    provider_sub = provider_parser.add_subparsers(dest="provider_action", required=True)
+
+    provider_sub.add_parser("show", help="Show current provider configuration")
+
+    set_parser = provider_sub.add_parser("set", help="Set a provider (claude or langchain)")
+    set_parser.add_argument("target", choices=["llm", "eval"], help="Which provider to change: 'llm' (form Q&A) or 'eval' (job evaluation)")
+    set_parser.add_argument("backend", choices=["claude", "langchain"], help="Backend to use")
+    set_parser.add_argument("--model", type=str, default=None, help="Model name (e.g. claude-haiku-4-5-20251001 or llama3.1:8b)")
+
     return parser.parse_args()
+
+
+ENV_FILE = os.path.join(os.path.dirname(__file__), ".env")
+
+_PROVIDER_KEYS = {
+    "llm":  ("LLM_PROVIDER",      "LANGCHAIN_MODEL",      "CLAUDE_MODEL"),
+    "eval": ("LLM_PROVIDER_EVAL", "LANGCHAIN_MODEL_EVAL", "CLAUDE_MODEL"),
+}
+
+_CLAUDE_DEFAULT  = "claude-haiku-4-5-20251001"
+_OLLAMA_DEFAULT  = "llama3.1:8b"
+
+
+def run_provider_show():
+    from dotenv import dotenv_values
+    cfg = dotenv_values(ENV_FILE)
+
+    def _fmt(provider_key: str, lc_model_key: str, _: str) -> str:
+        backend = cfg.get(provider_key, "(not set)").lower()
+        if backend == "langchain":
+            model = cfg.get(lc_model_key, "(not set)")
+            return f"langchain  model={model}"
+        if backend == "claude":
+            model = cfg.get("CLAUDE_MODEL", _CLAUDE_DEFAULT)
+            return f"claude     model={model}"
+        return backend
+
+    print(f"  llm  (form Q&A):       {_fmt(*_PROVIDER_KEYS['llm'])}")
+    print(f"  eval (job evaluation): {_fmt(*_PROVIDER_KEYS['eval'])}")
+
+
+def run_provider_set(target: str, backend: str, model: str | None):
+    from dotenv import set_key
+    provider_key, lc_model_key, _ = _PROVIDER_KEYS[target]
+
+    set_key(ENV_FILE, provider_key, backend)
+
+    if backend == "langchain":
+        m = model or _OLLAMA_DEFAULT
+        set_key(ENV_FILE, lc_model_key, m)
+        print(f"[provider] {target} -> langchain  model={m}")
+    else:
+        if model:
+            set_key(ENV_FILE, "CLAUDE_MODEL", model)
+        m = model or os.getenv("CLAUDE_MODEL") or _CLAUDE_DEFAULT
+        print(f"[provider] {target} -> claude     model={m}")
 
 
 def run_login(site: str):
@@ -145,14 +201,27 @@ def run_login(site: str):
 def main():
     args = parse_args()
 
+    if args.task == "provider":
+        if args.provider_action == "show":
+            run_provider_show()
+        elif args.provider_action == "set":
+            run_provider_set(args.target, args.backend, args.model)
+        return
+
     if args.task == "login":
         run_login(args.site)
         return
 
     if args.task == "test-apply":
         from src.core.use_cases.job_application_handler import JobApplicationHandler
+        from pathlib import Path as _Path
         resume_path = args.resume or "resume.txt"
-        resume_text = open(resume_path, "r", encoding="utf-8").read()
+        _rp = _Path(resume_path)
+        if _rp.suffix.lower() == ".pdf":
+            from pypdf import PdfReader as _PdfReader
+            resume_text = "\n".join(p.extract_text() or "" for p in _PdfReader(resume_path).pages)
+        else:
+            resume_text = _rp.read_text(encoding="utf-8")
         driver = setup(force_headless=False)
         try:
             driver.get(args.job_url)
@@ -172,7 +241,10 @@ def main():
             success = handler.submit_easy_apply(job_title=title, job_description=description)
             print(f"Result: {'SUCCESS' if success else 'FAILED'}")
         finally:
-            input("Press Enter to close browser...")
+            try:
+                input("Press Enter to close browser...")
+            except EOFError:
+                pass
             driver.quit()
         return
 
@@ -186,10 +258,15 @@ def main():
         from src.core.ai.llm_provider import get_llm_provider, get_eval_provider
         logger.info("Warming up LLM models...")
         async def _warmup():
-            import asyncio
+            async def _try(name: str, provider):
+                try:
+                    await provider.complete("hi")
+                    logger.info(f"Warmup OK: {name}")
+                except Exception as e:
+                    logger.warning(f"Warmup failed for {name}: {e}")
             await asyncio.gather(
-                get_llm_provider().complete("hi"),
-                get_eval_provider().complete("hi"),
+                _try("llm", get_llm_provider()),
+                _try("eval", get_eval_provider()),
             )
         asyncio.run(_warmup())
         logger.info("LLM models ready.")

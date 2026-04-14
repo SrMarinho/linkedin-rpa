@@ -12,6 +12,7 @@ Automated job application bot with AI-powered evaluation. Currently supports Lin
   - Tracks applied jobs to avoid duplicates
 - **Connect**: Sends connection requests automatically (LinkedIn)
 - **Bot**: Control JobPilot remotely via Telegram — start/stop tasks, check status, and receive notifications for every application sent
+- **Provider**: Switch AI backends at runtime without editing `.env` manually
 
 ## Requirements
 
@@ -40,6 +41,16 @@ HEADLESS=FALSE
 TELEGRAM_BOT_TOKEN=your_bot_token
 TELEGRAM_CHAT_ID=your_channel_id   # channel/group for notifications
 TELEGRAM_ADMIN_ID=your_personal_id # your personal chat ID for commands
+
+# LLM provider: "claude" or "langchain" (Ollama)
+LLM_PROVIDER=langchain
+CLAUDE_MODEL=claude-haiku-4-5-20251001
+LANGCHAIN_MODEL=llama3.1:8b
+LANGCHAIN_BASE_URL=http://localhost:11434
+
+# Separate provider for job evaluation (optional, falls back to LLM_PROVIDER)
+LLM_PROVIDER_EVAL=claude
+LANGCHAIN_MODEL_EVAL=llama3.1:8b
 ```
 
 > Set `HEADLESS=TRUE` to run Chrome in the background (no visible window).
@@ -119,6 +130,36 @@ uv run main.py connect --continue
 
 ---
 
+### Switch AI provider
+
+View the current configuration or switch backends without editing `.env` manually:
+
+```bash
+# Show current providers
+uv run main.py provider show
+
+# Use Claude for job evaluation
+uv run main.py provider set eval claude
+
+# Use Ollama for job evaluation
+uv run main.py provider set eval langchain --model llama3.1:8b
+
+# Use Claude for form Q&A
+uv run main.py provider set llm claude
+
+# Use a specific Claude model
+uv run main.py provider set eval claude --model claude-opus-4-6
+```
+
+| Target | Description |
+|--------|-------------|
+| `eval` | AI used to evaluate whether a job matches your resume |
+| `llm` | AI used to answer unknown form questions |
+
+> Changes are written directly to `.env` and take effect on the next run.
+
+---
+
 ### Telegram Bot
 
 Start the bot to control JobPilot remotely via Telegram:
@@ -193,6 +234,14 @@ jobpilot/
     ├── bot/
     │   └── telegram_bot.py                   # Telegram bot (polling + command handling)
     ├── core/
+    │   └── use_cases/                        # Site-agnostic business logic
+    │       ├── job_evaluator.py              # AI job evaluation
+    │       ├── salary_estimator.py           # AI salary estimation
+    │       ├── job_application_handler.py    # Form filling and submission
+    │       └── applied_jobs_tracker.py       # Persistence layer
+    ├── core/
+    │   ├── ai/
+    │   │   └── llm_provider.py               # LLM provider abstraction (Claude / Ollama)
     │   └── use_cases/                        # Site-agnostic business logic
     │       ├── job_evaluator.py              # AI job evaluation
     │       ├── salary_estimator.py           # AI salary estimation
