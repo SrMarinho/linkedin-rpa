@@ -135,11 +135,11 @@ class JobEvaluator:
 
         return False
 
-    def evaluate(self, title: str, description: str) -> tuple[bool, int | None, str]:
-        """Returns (is_match, salary_estimate, reason)."""
+    def evaluate(self, title: str, description: str) -> tuple[bool, int | None, str, list[str]]:
+        """Returns (is_match, salary_estimate, reason, missing_skills)."""
         return asyncio.run(self._evaluate_async(title, description))
 
-    async def _evaluate_async(self, title: str, description: str) -> tuple[bool, int | None, str]:
+    async def _evaluate_async(self, title: str, description: str) -> tuple[bool, int | None, str, list[str]]:
         description = description[:MAX_DESCRIPTION_CHARS]
 
         preferences_section = (
@@ -173,12 +173,15 @@ RULES (answer NO if any fails):
 Salary reference (BRL/month): Junior CLT 3000-6000 PJ 4000-8000 | Pleno CLT 6000-10000 PJ 8000-14000 | Senior CLT 10000-18000 PJ 14000-25000
 
 IMPORTANT: reply with ONLY one line, no extra text:
-If match: YES|<salary number>|<short reason>
-If no match: NO|<short reason>
+If match: YES|<salary number>|<short reason>|<missing skills>
+If no match: NO|<short reason>|<missing skills>
+
+<missing skills>: comma-separated hard skills/technologies the job requires that are NOT in the candidate's resume. Leave empty if none.
 
 Examples:
-YES|7000|Python/Node backend role, remote, pleno level matches
-NO|Requires Angular, candidate works with Python/Node"""
+YES|7000|Python/Node backend role, remote, pleno level matches|kubernetes,redis
+NO|Requires Angular, candidate works with Python/Node|angular,typescript
+NO|Go required|golang"""
 
         result = await get_eval_provider().complete(prompt)
 
@@ -186,6 +189,7 @@ NO|Requires Angular, candidate works with Python/Node"""
         is_match = False
         salary = None
         reason = result
+        missing_skills: list[str] = []
 
         for line in result.splitlines():
             line = line.strip()
@@ -198,8 +202,16 @@ NO|Requires Angular, candidate works with Python/Node"""
                         salary = int(re.sub(r"\D", "", parts[1]))
                     except Exception:
                         salary = None
-                reason = parts[-1].strip() if len(parts) >= 2 else line
+                # reason is always the last field before skills (index 2 for NO, 3 for YES — or last-1)
+                if is_match:
+                    reason = parts[2].strip() if len(parts) >= 3 else (parts[-1].strip() if parts else line)
+                    skills_raw = parts[3].strip() if len(parts) >= 4 else ""
+                else:
+                    reason = parts[1].strip() if len(parts) >= 2 else line
+                    skills_raw = parts[2].strip() if len(parts) >= 3 else ""
+                missing_skills = [s.strip().lower() for s in skills_raw.split(",") if s.strip()]
                 break
 
-        logger.info(f"Evaluation: {'YES' if is_match else 'NO'} | salary={salary} | {reason}")
-        return is_match, salary, reason
+        logger.info(f"Evaluation: {'YES' if is_match else 'NO'} | salary={salary} | {reason}" +
+                    (f" | missing: {missing_skills}" if missing_skills else ""))
+        return is_match, salary, reason, missing_skills

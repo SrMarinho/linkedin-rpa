@@ -5,6 +5,7 @@ from src.automation.pages.jobs_search_page import JobsSearchPage
 from src.automation.pages.indeed_jobs_page import IndeedJobsPage
 from src.automation.pages.glassdoor_jobs_page import GlassdoorJobsPage
 from src.core.use_cases.job_evaluator import JobEvaluator
+from src.core.use_cases.skills_tracker import track_missing_skills
 from src.core.use_cases.job_application_handler import JobApplicationHandler
 from src.core.use_cases.indeed_application_handler import IndeedApplicationHandler
 from src.core.use_cases.applied_jobs_tracker import AppliedJobsTracker
@@ -162,8 +163,10 @@ class JobApplicationManager:
                 logger.info(f"Job {i + 1}: Evaluating '{title}'")
                 self.evaluated_count += 1
 
-                is_match, salary, reason = self.evaluator.evaluate(title, description)
+                is_match, salary, reason, missing_skills = self.evaluator.evaluate(title, description)
                 logger.info(f"  ↳ {'✔' if is_match else '✘'} {reason}")
+                if missing_skills:
+                    track_missing_skills(missing_skills)
                 if not is_match:
                     self.tracker.mark_rejected(job_url, title, reason=reason)
                     continue

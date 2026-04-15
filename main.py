@@ -139,6 +139,19 @@ def parse_args():
     bot_parser = subparsers.add_parser("bot", help="Start Telegram bot to control JobPilot remotely")
     bot_parser.add_argument("--resume", type=str, default="resume.txt", help="Path to resume file (default: resume.txt)")
 
+    skills_parser = subparsers.add_parser("skills", help="View missing skills detected during job evaluation")
+    skills_sub = skills_parser.add_subparsers(dest="skills_action", required=True)
+
+    skills_list = skills_sub.add_parser("list", help="List all missing skills sorted by frequency")
+    skills_list.add_argument("--category", choices=["python", "node", "frontend", "devops", "data", "general"], default=None, help="Filter by category")
+    skills_list.add_argument("--level", type=int, choices=[1, 2, 3, 4, 5], default=None, help="Filter by learning level (1=fast, 5=slow)")
+
+    skills_top = skills_sub.add_parser("top", help="Show top most demanded missing skills")
+    skills_top.add_argument("--n", type=int, default=10, help="Number of skills to show (default: 10)")
+    skills_top.add_argument("--category", choices=["python", "node", "frontend", "devops", "data", "general"], default=None, help="Filter by category")
+
+    skills_sub.add_parser("clear", help="Clear all tracked skills")
+
     answers_parser = subparsers.add_parser("answers", help="Manage cached form answers (files/qa.json)")
     answers_sub = answers_parser.add_subparsers(dest="answers_action", required=True)
 
@@ -165,7 +178,73 @@ def parse_args():
     return parser.parse_args()
 
 
+SKILLS_FILE = os.path.join(os.path.dirname(__file__), "files", "skills_gap.json")
 QA_FILE = os.path.join(os.path.dirname(__file__), "files", "qa.json")
+
+_LEVEL_LABELS = {1: "dias", 2: "semanas", 3: "1-3 meses", 4: "3-12 meses", 5: "1+ ano"}
+_CATEGORY_COLORS = {"python": "Python", "node": "Node", "frontend": "Frontend",
+                    "devops": "DevOps", "data": "Data", "general": "General"}
+
+
+def _load_skills_cli() -> dict:
+    if os.path.exists(SKILLS_FILE):
+        with open(SKILLS_FILE, "r", encoding="utf-8") as f:
+            return json.load(f)
+    return {}
+
+
+def run_skills_list(category: str | None, level: int | None):
+    skills = _load_skills_cli()
+    if not skills:
+        print("No skills tracked yet. Run apply to start collecting data.")
+        return
+    entries = [
+        (name, data) for name, data in skills.items()
+        if (category is None or data.get("category") == category)
+        and (level is None or data.get("level") == level)
+    ]
+    if not entries:
+        print("No skills match the given filters.")
+        return
+    entries.sort(key=lambda x: x[1].get("count", 0), reverse=True)
+    print(f"{'Skill':<25} {'Category':<12} {'Level':<7} {'Estimate':<15} {'Count'}")
+    print("-" * 72)
+    for name, data in entries:
+        cat   = data.get("category", "?")
+        lvl   = data.get("level", "?")
+        est   = data.get("estimate", "?")
+        count = data.get("count", 0)
+        stars = "*" * lvl if isinstance(lvl, int) else "?"
+        print(f"  {name:<23} {cat:<12} {stars:<7} {est:<15} {count}x")
+
+
+def run_skills_top(n: int, category: str | None):
+    skills = _load_skills_cli()
+    if not skills:
+        print("No skills tracked yet.")
+        return
+    entries = [
+        (name, data) for name, data in skills.items()
+        if category is None or data.get("category") == category
+    ]
+    entries.sort(key=lambda x: x[1].get("count", 0), reverse=True)
+    entries = entries[:n]
+    label = f" [{category}]" if category else ""
+    print(f"Top {len(entries)} missing skills{label}:\n")
+    for i, (name, data) in enumerate(entries, 1):
+        lvl   = data.get("level", "?")
+        est   = data.get("estimate", "?")
+        count = data.get("count", 0)
+        stars = "*" * lvl if isinstance(lvl, int) else "?"
+        cat   = data.get("category", "?")
+        print(f"  {i:>2}. {name:<22} {cat:<12} {stars:<7} {est}  ({count}x)")
+
+
+def run_skills_clear():
+    if os.path.exists(SKILLS_FILE):
+        with open(SKILLS_FILE, "w") as f:
+            json.dump({}, f)
+    print("Skills gap cleared.")
 
 
 def _load_qa_cli() -> dict:
@@ -394,6 +473,15 @@ def run_login(site: str):
 
 def main():
     args = parse_args()
+
+    if args.task == "skills":
+        if args.skills_action == "list":
+            run_skills_list(getattr(args, "category", None), getattr(args, "level", None))
+        elif args.skills_action == "top":
+            run_skills_top(args.n, getattr(args, "category", None))
+        elif args.skills_action == "clear":
+            run_skills_clear()
+        return
 
     if args.task == "answers":
         if args.answers_action == "list":
