@@ -1,5 +1,5 @@
 import asyncio
-from claude_agent_sdk import query, ClaudeAgentOptions, ResultMessage
+from src.core.ai.llm_provider import get_llm_provider
 from src.config.settings import logger
 
 
@@ -38,13 +38,7 @@ Market reference (monthly gross, BRL):
 Reply with ONLY a single integer representing the suggested monthly salary in BRL (no currency symbol, no dots, no text).
 Example: 5000"""
 
-        result = ""
-        async for message in query(
-            prompt=prompt,
-            options=ClaudeAgentOptions(max_turns=1),
-        ):
-            if isinstance(message, ResultMessage):
-                result = message.result.strip()
+        result = await get_llm_provider().complete(prompt)
 
         try:
             # Extract first number found in the response

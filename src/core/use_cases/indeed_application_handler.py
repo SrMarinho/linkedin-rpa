@@ -5,7 +5,7 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.support.wait import WebDriverWait
 from selenium.webdriver.support.select import Select
 from selenium.common.exceptions import NoSuchElementException
-from claude_agent_sdk import query, ClaudeAgentOptions, ResultMessage
+from src.core.ai.llm_provider import get_llm_provider
 from src.config.settings import logger
 
 _REACT_SET_VALUE = """
@@ -107,12 +107,32 @@ class IndeedApplicationHandler:
                 if not options:
                     continue
                 answer = self._ask_claude_choice(question, options)
-                if answer:
-                    try:
-                        Select(sel).select_by_visible_text(answer)
-                        logger.info(f"Selected '{answer}' for '{question}'")
-                    except Exception:
-                        pass
+                # Re-find element to avoid stale reference after AI call
+                try:
+                    fresh_els = self.driver.find_elements(By.XPATH, "//select[@required]")
+                    for fresh in fresh_els:
+                        if fresh.is_displayed() and self._get_field_label(fresh) == question:
+                            sel = fresh
+                            break
+                except Exception:
+                    pass
+                try:
+                    sel_obj = Select(sel)
+                    if answer:
+                        matched = next((o for o in options if o.lower() == answer.lower()), None)
+                        matched = matched or next((o for o in options if answer.lower() in o.lower() or o.lower() in answer.lower()), None)
+                        if matched:
+                            sel_obj.select_by_visible_text(matched)
+                            logger.info(f"Selected '{matched}' for '{question}'")
+                        else:
+                            # Fallback: first non-placeholder option
+                            for opt_el in sel_obj.options:
+                                if opt_el.get_attribute("value"):
+                                    sel_obj.select_by_value(opt_el.get_attribute("value"))
+                                    logger.warning(f"No match for '{answer}' in '{question}' — selected first option: '{opt_el.text.strip()}'")
+                                    break
+                except Exception as e:
+                    logger.warning(f"Failed to select for '{question}': {e}")
 
         except Exception as e:
             logger.debug(f"Error filling fields: {e}")
@@ -120,7 +140,11 @@ class IndeedApplicationHandler:
     def _decide_answer(self, question: str, salary: int | None) -> str | None:
         if not question or question == "(unknown)":
             return None
-        salary_keywords = ["salário", "salario", "salary", "remuneração", "pretensão", "compensation"]
+        salary_keywords = [
+            "salário", "salario", "salary", "remuneração", "remuneracao",
+            "pretensão", "pretensao", "compensation", "salarial", "expectativa",
+            "remuner", "wage", "pay ", "ctc",
+        ]
         if salary and any(kw in question.lower() for kw in salary_keywords):
             return str(salary)
         return self._ask_claude(question)
@@ -149,40 +173,37 @@ class IndeedApplicationHandler:
             return None
 
     async def _ask_claude_async(self, question: str) -> str | None:
-        prompt = f"""Based on this candidate's resume, answer the following job application form question.
+        prompt = f"""Com base no currículo do candidato, responda a seguinte pergunta do formulário de candidatura.
 
-RESUME:
+CURRÍCULO:
 {self.resume}
 
-QUESTION: {question}
+PERGUNTA: {question}
 
-Reply with ONLY the answer value — a number, short word, or brief phrase suitable for a form field.
-Do not include explanations or punctuation."""
+Responda APENAS com o valor — um número, palavra curta ou frase breve em português, adequado para um campo de formulário.
+Se não souber a resposta ou ela não estiver no currículo, responda exatamente: null
+Não invente. Não inclua explicações ou pontuação."""
 
-        result = ""
-        async for message in query(prompt=prompt, options=ClaudeAgentOptions(max_turns=1)):
-            if isinstance(message, ResultMessage):
-                result = message.result.strip()
-        return result if result else None
+        result = (await get_llm_provider().complete(prompt) or "").strip()
+        if not result or result.lower() == "null":
+            return None
+        return result
 
     async def _ask_claude_choice_async(self, question: str, options: list[str]) -> str | None:
         options_str = "\n".join(f"- {o}" for o in options)
-        prompt = f"""Based on this candidate's resume, choose the best option for this job application form field.
+        prompt = f"""Com base no currículo do candidato, escolha a melhor opção para este campo do formulário de candidatura.
 
-RESUME:
+CURRÍCULO:
 {self.resume}
 
-QUESTION: {question}
+PERGUNTA: {question}
 
-OPTIONS:
+OPÇÕES:
 {options_str}
 
-Reply with ONLY the exact text of the chosen option. No explanations."""
+Responda APENAS com o texto exato da opção escolhida. Sem explicações."""
 
-        result = ""
-        async for message in query(prompt=prompt, options=ClaudeAgentOptions(max_turns=1)):
-            if isinstance(message, ResultMessage):
-                result = message.result.strip()
+        result = await get_llm_provider().complete(prompt)
 
         for opt in options:
             if opt.lower() == result.lower():
