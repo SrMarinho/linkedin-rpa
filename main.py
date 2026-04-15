@@ -6,7 +6,7 @@ from datetime import date
 import src.config.settings as setting
 import undetected_chromedriver as uc
 from src.automation.tasks.connection_manager import ConnectionManager
-from src.automation.tasks.job_application_manager import JobApplicationManager
+from src.automation.tasks.job_application_manager import JobApplicationManager, _detect_site
 from src.config.settings import logger
 from dotenv import load_dotenv
 
@@ -113,6 +113,7 @@ def parse_args():
     apply_parser.add_argument("--level", type=str, nargs="+", default=[], help="Accepted seniority levels (e.g. --level junior pleno)")
     apply_parser.add_argument("--max-pages", type=int, default=100, help="Max pages to process (default: 100)")
     apply_parser.add_argument("--continue", dest="resume_from", action="store_true", help="Resume from the last page where it stopped")
+    apply_parser.add_argument("--site", choices=["linkedin", "glassdoor", "indeed"], default=None, help="Resume saved config for a specific site (default: last used site)")
     apply_parser.add_argument("--llm-provider", choices=["claude", "langchain"], default=None, metavar="BACKEND", help="Override LLM provider for this run only (claude or langchain)")
     apply_parser.add_argument("--llm-model", type=str, default=None, metavar="MODEL", help="Override LLM model for this run only")
     apply_parser.add_argument("--eval-provider", choices=["claude", "langchain"], default=None, metavar="BACKEND", help="Override eval provider for this run only (claude or langchain)")
@@ -257,27 +258,55 @@ def main():
         TelegramBot(driver_factory=setup, resume_path=args.resume).run()
         return
 
+    last_urls = load_last_urls()
+
+    # Resolve the save key: apply uses per-site keys (apply_linkedin, apply_glassdoor, apply_indeed)
+    url = getattr(args, "url", None)
+    if args.task == "apply":
+        if url:
+            site_key = f"apply_{_detect_site(url)}"
+        else:
+            explicit_site = getattr(args, "site", None)
+            if explicit_site:
+                site_key = f"apply_{explicit_site}"
+            else:
+                site_key = f"apply_{last_urls.get('apply_last_site', 'linkedin')}"
+    else:
+        site_key = args.task
+
+    saved = last_urls.get(site_key, {})
+    if isinstance(saved, str):
+        saved = {"url": saved, "page": 1}
+
+    start_page = args.start_page if hasattr(args, "start_page") and args.start_page is not None else 1
+    resume_from = getattr(args, "resume_from", False) or getattr(args, "resume", False)
+
+    # apply-specific persisted options — CLI args take priority, then saved, then defaults
+    level       = getattr(args, "level", [])       or saved.get("level", [])
+    preferences = getattr(args, "preferences", "") or saved.get("preferences", "")
+    resume_path = getattr(args, "resume", None)    or saved.get("resume", "resume.txt")
+    llm_prov    = getattr(args, "llm_provider", None)  or saved.get("llm_provider")
+    llm_mod     = getattr(args, "llm_model", None)     or saved.get("llm_model")
+    eval_prov   = getattr(args, "eval_provider", None) or saved.get("eval_provider")
+    eval_mod    = getattr(args, "eval_model", None)    or saved.get("eval_model")
+
     if args.task == "apply":
         import asyncio
-        # Apply per-run provider overrides (do not persist to .env)
-        _llm_provider  = getattr(args, "llm_provider",  None)
-        _llm_model     = getattr(args, "llm_model",     None)
-        _eval_provider = getattr(args, "eval_provider", None)
-        _eval_model    = getattr(args, "eval_model",    None)
-        if _llm_provider:
-            os.environ["LLM_PROVIDER"] = _llm_provider
-            logger.info(f"[override] LLM_PROVIDER={_llm_provider}")
-        if _llm_model:
+        # Apply per-run provider overrides (do not persist to .env) — CLI > saved > .env
+        if llm_prov:
+            os.environ["LLM_PROVIDER"] = llm_prov
+            logger.info(f"[override] LLM_PROVIDER={llm_prov}")
+        if llm_mod:
             key = "LANGCHAIN_MODEL" if os.environ.get("LLM_PROVIDER") == "langchain" else "CLAUDE_MODEL"
-            os.environ[key] = _llm_model
-            logger.info(f"[override] {key}={_llm_model}")
-        if _eval_provider:
-            os.environ["LLM_PROVIDER_EVAL"] = _eval_provider
-            logger.info(f"[override] LLM_PROVIDER_EVAL={_eval_provider}")
-        if _eval_model:
+            os.environ[key] = llm_mod
+            logger.info(f"[override] {key}={llm_mod}")
+        if eval_prov:
+            os.environ["LLM_PROVIDER_EVAL"] = eval_prov
+            logger.info(f"[override] LLM_PROVIDER_EVAL={eval_prov}")
+        if eval_mod:
             key = "LANGCHAIN_MODEL_EVAL" if os.environ.get("LLM_PROVIDER_EVAL") == "langchain" else "CLAUDE_MODEL"
-            os.environ[key] = _eval_model
-            logger.info(f"[override] {key}={_eval_model}")
+            os.environ[key] = eval_mod
+            logger.info(f"[override] {key}={eval_mod}")
 
         from src.core.ai.llm_provider import get_llm_provider, get_eval_provider
         logger.info("Warming up LLM models...")
@@ -295,40 +324,38 @@ def main():
         asyncio.run(_warmup())
         logger.info("LLM models ready.")
 
-    last_urls = load_last_urls()
-    saved = last_urls.get(args.task, {})
-    if isinstance(saved, str):
-        saved = {"url": saved, "page": 1}
-
-    url = args.url
-    start_page = args.start_page if hasattr(args, "start_page") and args.start_page is not None else 1
-    resume_from = getattr(args, "resume_from", False) or getattr(args, "resume", False)
-
-    # apply-specific persisted options
-    level = getattr(args, "level", []) or saved.get("level", [])
-    preferences = getattr(args, "preferences", "") or saved.get("preferences", "")
-    resume_path = getattr(args, "resume", None) or saved.get("resume", "resume.txt")
-
     if url:
         extra = {}
         if args.task == "apply":
-            extra = {"level": level, "preferences": preferences, "resume": resume_path}
-        save_last_url(args.task, url, page=1, extra=extra or None)
+            extra = {
+                "level": level, "preferences": preferences, "resume": resume_path,
+                "llm_provider": llm_prov, "llm_model": llm_mod,
+                "eval_provider": eval_prov, "eval_model": eval_mod,
+            }
+        save_last_url(site_key, url, page=1, extra=extra or None)
+        if args.task == "apply":
+            data = load_last_urls()
+            data["apply_last_site"] = _detect_site(url)
+            with open(LAST_URLS_FILE, "w") as f:
+                json.dump(data, f, indent=2)
     else:
         url = saved.get("url")
         if not url:
-            print(f"Error: --url is required for the first '{args.task}' run (no saved URL found).")
+            site_hint = f"--site {site_key.replace('apply_', '')} " if args.task == "apply" else ""
+            print(f"Error: --url is required for the first '{args.task}' run (no saved URL found for {site_key}).")
             return
         if resume_from:
             start_page = saved.get("page", 1)
-            print(f"Resuming '{args.task}' from page {start_page}: {url}")
+            print(f"Resuming '{site_key}' from page {start_page}: {url}")
         else:
-            print(f"Using last saved URL for '{args.task}': {url}")
+            print(f"Using last saved URL for '{site_key}': {url}")
         if args.task == "apply":
             if level:
                 print(f"Level filter: {level}")
             if preferences:
                 print(f"Preferences: {preferences}")
+            if eval_prov:
+                print(f"Eval provider: {eval_prov}" + (f" model={eval_mod}" if eval_mod else ""))
 
     if args.task == "connect" and is_already_ran_today():
         logger.info("Already ran today. Skipping.")
@@ -344,8 +371,12 @@ def main():
     def on_page_change(page: int):
         extra = None
         if args.task == "apply":
-            extra = {"level": level, "preferences": preferences, "resume": resume_path}
-        save_last_url(args.task, url, page=page, extra=extra)
+            extra = {
+                "level": level, "preferences": preferences, "resume": resume_path,
+                "llm_provider": llm_prov, "llm_model": llm_mod,
+                "eval_provider": eval_prov, "eval_model": eval_mod,
+            }
+        save_last_url(site_key, url, page=page, extra=extra)
 
     driver = setup(force_headless=getattr(args, "headless", False))
     try:
