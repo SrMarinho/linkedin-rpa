@@ -206,7 +206,7 @@ class JobApplicationHandler:
                     question = self._get_field_label(sel)
                     if not question or question == "(unknown)":
                         continue
-                    options = [o["t"] for o in non_empty]
+                    options = [o["v"] for o in non_empty]
                     if not options:
                         continue
                     fields.append({"el": sel, "question": question, "type": "choice", "options": options, "error": None, "current_value": ""})
@@ -569,7 +569,15 @@ Responda APENAS com o valor corrigido — um número, palavra curta ou frase bre
             opt_elements = sel_obj.options
             answer_n = _normalize(answer)
 
-            # 1. Exact normalized match
+            # 0. Direct value match — AI was given values, so try exact hit first
+            for opt_el in opt_elements:
+                val = opt_el.get_attribute("value")
+                if val and _normalize(val) == answer_n:
+                    sel_obj.select_by_value(val)
+                    logger.info(f"Selected by value '{val}' for '{question}'")
+                    return
+
+            # 1. Exact normalized match on text
             for opt_el in opt_elements:
                 if not opt_el.get_attribute("value"):
                     continue

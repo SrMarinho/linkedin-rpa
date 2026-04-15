@@ -113,6 +113,10 @@ def parse_args():
     apply_parser.add_argument("--level", type=str, nargs="+", default=[], help="Accepted seniority levels (e.g. --level junior pleno)")
     apply_parser.add_argument("--max-pages", type=int, default=100, help="Max pages to process (default: 100)")
     apply_parser.add_argument("--continue", dest="resume_from", action="store_true", help="Resume from the last page where it stopped")
+    apply_parser.add_argument("--llm-provider", choices=["claude", "langchain"], default=None, metavar="BACKEND", help="Override LLM provider for this run only (claude or langchain)")
+    apply_parser.add_argument("--llm-model", type=str, default=None, metavar="MODEL", help="Override LLM model for this run only")
+    apply_parser.add_argument("--eval-provider", choices=["claude", "langchain"], default=None, metavar="BACKEND", help="Override eval provider for this run only (claude or langchain)")
+    apply_parser.add_argument("--eval-model", type=str, default=None, metavar="MODEL", help="Override eval model for this run only")
 
     test_parser = subparsers.add_parser("test-apply", help="Test Easy Apply on a specific job URL (skips evaluation)")
     test_parser.add_argument("job_url", type=str, help="LinkedIn job URL (e.g. https://www.linkedin.com/jobs/view/1234567890)")
@@ -255,6 +259,26 @@ def main():
 
     if args.task == "apply":
         import asyncio
+        # Apply per-run provider overrides (do not persist to .env)
+        _llm_provider  = getattr(args, "llm_provider",  None)
+        _llm_model     = getattr(args, "llm_model",     None)
+        _eval_provider = getattr(args, "eval_provider", None)
+        _eval_model    = getattr(args, "eval_model",    None)
+        if _llm_provider:
+            os.environ["LLM_PROVIDER"] = _llm_provider
+            logger.info(f"[override] LLM_PROVIDER={_llm_provider}")
+        if _llm_model:
+            key = "LANGCHAIN_MODEL" if os.environ.get("LLM_PROVIDER") == "langchain" else "CLAUDE_MODEL"
+            os.environ[key] = _llm_model
+            logger.info(f"[override] {key}={_llm_model}")
+        if _eval_provider:
+            os.environ["LLM_PROVIDER_EVAL"] = _eval_provider
+            logger.info(f"[override] LLM_PROVIDER_EVAL={_eval_provider}")
+        if _eval_model:
+            key = "LANGCHAIN_MODEL_EVAL" if os.environ.get("LLM_PROVIDER_EVAL") == "langchain" else "CLAUDE_MODEL"
+            os.environ[key] = _eval_model
+            logger.info(f"[override] {key}={_eval_model}")
+
         from src.core.ai.llm_provider import get_llm_provider, get_eval_provider
         logger.info("Warming up LLM models...")
         async def _warmup():
