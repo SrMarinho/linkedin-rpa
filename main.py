@@ -129,11 +129,12 @@ def parse_args():
     answers_parser = subparsers.add_parser("answers", help="Manage cached form answers (files/qa.json)")
     answers_sub = answers_parser.add_subparsers(dest="answers_action", required=True)
 
-    answers_sub.add_parser("list", help="Show questions with missing answers")
-    answers_sub.add_parser("show", help="Show all cached answers")
+    answers_sub.add_parser("list", help="Show questions with missing answers (numbered)")
+    answers_sub.add_parser("show", help="Show all cached answers (numbered)")
+    answers_sub.add_parser("fill", help="Interactively answer all missing questions one by one")
 
-    answers_set = answers_sub.add_parser("set", help="Set an answer by partial question match")
-    answers_set.add_argument("question", type=str, help="Part of the question to match")
+    answers_set = answers_sub.add_parser("set", help="Set an answer by question number (from list/show)")
+    answers_set.add_argument("number", type=int, help="Question number shown in 'answers list' or 'answers show'")
     answers_set.add_argument("answer", type=str, help="Answer to save")
 
     answers_sub.add_parser("clear", help="Remove all cached answers")
@@ -181,19 +182,31 @@ def _qa_display(key: str, entry) -> tuple[str, str, str | None]:
     return original, answer, opts_str
 
 
+def _qa_all_entries(qa: dict) -> list[tuple[str, object]]:
+    """Return all entries as an ordered list of (key, entry)."""
+    return list(qa.items())
+
+
+def _is_answered(entry) -> bool:
+    if isinstance(entry, dict):
+        return bool(entry.get("answer", "").strip())
+    return bool(str(entry).strip()) if entry is not None else False
+
+
 def run_answers_list():
     qa = _load_qa_cli()
-    missing = [(k, v) for k, v in qa.items() if not (isinstance(v, dict) and v.get("answer")) and not (isinstance(v, str) and v.strip())]
+    entries = _qa_all_entries(qa)
+    missing = [(i + 1, k, v) for i, (k, v) in enumerate(entries) if not _is_answered(v)]
     if not missing:
         print("All questions have answers.")
         return
     print(f"{len(missing)} question(s) without an answer:\n")
-    for key, entry in missing:
+    for num, key, entry in missing:
         original, _, opts_str = _qa_display(key, entry)
-        print(f"  Q: {original}")
+        print(f"  [{num}] {original}")
         if opts_str:
-            print(f"     Options: {opts_str}")
-        print()
+            print(f"       Options: {opts_str}")
+    print(f'\nUse: answers set <number> "your answer"')
 
 
 def run_answers_show():
@@ -201,55 +214,73 @@ def run_answers_show():
     if not qa:
         print("No cached answers found.")
         return
-    answered   = [(k, v) for k, v in qa.items() if  (isinstance(v, dict) and v.get("answer")) or (isinstance(v, str) and v.strip())]
-    unanswered = [(k, v) for k, v in qa.items() if not ((isinstance(v, dict) and v.get("answer")) or (isinstance(v, str) and v.strip()))]
+    entries = _qa_all_entries(qa)
+    answered   = [(i + 1, k, v) for i, (k, v) in enumerate(entries) if     _is_answered(v)]
+    unanswered = [(i + 1, k, v) for i, (k, v) in enumerate(entries) if not _is_answered(v)]
     if answered:
         print(f"Answered ({len(answered)}):\n")
-        for key, entry in answered:
+        for num, key, entry in answered:
             original, answer, opts_str = _qa_display(key, entry)
-            print(f"  Q: {original}")
-            print(f"  A: {answer}")
+            print(f"  [{num}] {original}")
+            print(f"        A: {answer}")
             if opts_str:
-                print(f"     Options: {opts_str}")
-            print()
+                print(f"        Options: {opts_str}")
     if unanswered:
-        print(f"Missing ({len(unanswered)}):\n")
-        for key, entry in unanswered:
+        print(f"\nMissing ({len(unanswered)}):\n")
+        for num, key, entry in unanswered:
             original, _, opts_str = _qa_display(key, entry)
-            print(f"  Q: {original}")
+            print(f"  [{num}] {original}")
             if opts_str:
-                print(f"     Options: {opts_str}")
-            print()
+                print(f"        Options: {opts_str}")
+        print(f'\nUse: answers set <number> "your answer"')
 
 
-def run_answers_set(question_fragment: str, answer: str):
-    import unicodedata
-    def _norm(s):
-        return unicodedata.normalize("NFKD", s).encode("ascii", "ignore").decode().lower()
-
+def run_answers_set(number: int, answer: str):
     qa = _load_qa_cli()
-    frag = _norm(question_fragment)
-    matches = [(k, v) for k, v in qa.items() if frag in _norm(k) or frag in _norm((v.get("original") or "") if isinstance(v, dict) else "")]
-    if not matches:
-        print(f"No question matching '{question_fragment}' found.")
+    entries = _qa_all_entries(qa)
+    if number < 1 or number > len(entries):
+        print(f"Invalid number {number}. Valid range: 1–{len(entries)}.")
         return
-    if len(matches) > 1:
-        print(f"Multiple matches for '{question_fragment}':")
-        for k, v in matches:
-            original, ans, _ = _qa_display(k, v)
-            print(f"  - {original} (current: '{ans}')")
-        print("Be more specific.")
-        return
-    key, entry = matches[0]
-    original, old_answer, opts_str = _qa_display(key, entry)
+    key, entry = entries[number - 1]
+    original, old_answer, _ = _qa_display(key, entry)
     if isinstance(entry, dict):
         entry["answer"] = answer
         qa[key] = entry
     else:
         qa[key] = answer
     _save_qa_cli(qa)
-    print(f"Updated: '{original}'")
+    print(f"[{number}] {original}")
     print(f"  {old_answer!r} -> {answer!r}")
+
+
+def run_answers_fill():
+    qa = _load_qa_cli()
+    entries = _qa_all_entries(qa)
+    missing = [(i + 1, k, v) for i, (k, v) in enumerate(entries) if not _is_answered(v)]
+    if not missing:
+        print("All questions already have answers.")
+        return
+    print(f"{len(missing)} question(s) to fill. Press Enter to skip.\n")
+    for num, key, entry in missing:
+        original, _, opts_str = _qa_display(key, entry)
+        print(f"[{num}] {original}")
+        if opts_str:
+            print(f"     Options: {opts_str}")
+        try:
+            value = input("     Answer: ").strip()
+        except (EOFError, KeyboardInterrupt):
+            print("\nAborted.")
+            break
+        if not value:
+            print("     Skipped.\n")
+            continue
+        if isinstance(entry, dict):
+            entry["answer"] = value
+            qa[key] = entry
+        else:
+            qa[key] = value
+        _save_qa_cli(qa)
+        print(f"     Saved.\n")
 
 
 def run_answers_clear():
@@ -330,7 +361,9 @@ def main():
         elif args.answers_action == "show":
             run_answers_show()
         elif args.answers_action == "set":
-            run_answers_set(args.question, args.answer)
+            run_answers_set(args.number, args.answer)
+        elif args.answers_action == "fill":
+            run_answers_fill()
         elif args.answers_action == "clear":
             run_answers_clear()
         return
