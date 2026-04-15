@@ -126,6 +126,18 @@ def parse_args():
     bot_parser = subparsers.add_parser("bot", help="Start Telegram bot to control JobPilot remotely")
     bot_parser.add_argument("--resume", type=str, default="resume.txt", help="Path to resume file (default: resume.txt)")
 
+    answers_parser = subparsers.add_parser("answers", help="Manage cached form answers (files/qa.json)")
+    answers_sub = answers_parser.add_subparsers(dest="answers_action", required=True)
+
+    answers_sub.add_parser("list", help="Show questions with missing answers")
+    answers_sub.add_parser("show", help="Show all cached answers")
+
+    answers_set = answers_sub.add_parser("set", help="Set an answer by partial question match")
+    answers_set.add_argument("question", type=str, help="Part of the question to match")
+    answers_set.add_argument("answer", type=str, help="Answer to save")
+
+    answers_sub.add_parser("clear", help="Remove all cached answers")
+
     provider_parser = subparsers.add_parser("provider", help="Show or change LLM provider settings")
     provider_sub = provider_parser.add_subparsers(dest="provider_action", required=True)
 
@@ -137,6 +149,112 @@ def parse_args():
     set_parser.add_argument("--model", type=str, default=None, help="Model name (e.g. claude-haiku-4-5-20251001 or llama3.1:8b)")
 
     return parser.parse_args()
+
+
+QA_FILE = os.path.join(os.path.dirname(__file__), "files", "qa.json")
+
+
+def _load_qa_cli() -> dict:
+    if os.path.exists(QA_FILE):
+        with open(QA_FILE, "r", encoding="utf-8") as f:
+            return json.load(f)
+    return {}
+
+
+def _save_qa_cli(qa: dict):
+    os.makedirs(os.path.dirname(QA_FILE), exist_ok=True)
+    with open(QA_FILE, "w", encoding="utf-8") as f:
+        json.dump(qa, f, ensure_ascii=False, indent=2)
+
+
+def _qa_display(key: str, entry) -> tuple[str, str, str | None]:
+    """Returns (original_question, answer, options_str) for display."""
+    if isinstance(entry, dict):
+        original = entry.get("original") or key
+        answer   = entry.get("answer") or ""
+        options  = entry.get("options")
+        opts_str = ", ".join(options) if options else None
+    else:
+        original = key
+        answer   = str(entry) if entry is not None else ""
+        opts_str = None
+    return original, answer, opts_str
+
+
+def run_answers_list():
+    qa = _load_qa_cli()
+    missing = [(k, v) for k, v in qa.items() if not (isinstance(v, dict) and v.get("answer")) and not (isinstance(v, str) and v.strip())]
+    if not missing:
+        print("All questions have answers.")
+        return
+    print(f"{len(missing)} question(s) without an answer:\n")
+    for key, entry in missing:
+        original, _, opts_str = _qa_display(key, entry)
+        print(f"  Q: {original}")
+        if opts_str:
+            print(f"     Options: {opts_str}")
+        print()
+
+
+def run_answers_show():
+    qa = _load_qa_cli()
+    if not qa:
+        print("No cached answers found.")
+        return
+    answered   = [(k, v) for k, v in qa.items() if  (isinstance(v, dict) and v.get("answer")) or (isinstance(v, str) and v.strip())]
+    unanswered = [(k, v) for k, v in qa.items() if not ((isinstance(v, dict) and v.get("answer")) or (isinstance(v, str) and v.strip()))]
+    if answered:
+        print(f"Answered ({len(answered)}):\n")
+        for key, entry in answered:
+            original, answer, opts_str = _qa_display(key, entry)
+            print(f"  Q: {original}")
+            print(f"  A: {answer}")
+            if opts_str:
+                print(f"     Options: {opts_str}")
+            print()
+    if unanswered:
+        print(f"Missing ({len(unanswered)}):\n")
+        for key, entry in unanswered:
+            original, _, opts_str = _qa_display(key, entry)
+            print(f"  Q: {original}")
+            if opts_str:
+                print(f"     Options: {opts_str}")
+            print()
+
+
+def run_answers_set(question_fragment: str, answer: str):
+    import unicodedata
+    def _norm(s):
+        return unicodedata.normalize("NFKD", s).encode("ascii", "ignore").decode().lower()
+
+    qa = _load_qa_cli()
+    frag = _norm(question_fragment)
+    matches = [(k, v) for k, v in qa.items() if frag in _norm(k) or frag in _norm((v.get("original") or "") if isinstance(v, dict) else "")]
+    if not matches:
+        print(f"No question matching '{question_fragment}' found.")
+        return
+    if len(matches) > 1:
+        print(f"Multiple matches for '{question_fragment}':")
+        for k, v in matches:
+            original, ans, _ = _qa_display(k, v)
+            print(f"  - {original} (current: '{ans}')")
+        print("Be more specific.")
+        return
+    key, entry = matches[0]
+    original, old_answer, opts_str = _qa_display(key, entry)
+    if isinstance(entry, dict):
+        entry["answer"] = answer
+        qa[key] = entry
+    else:
+        qa[key] = answer
+    _save_qa_cli(qa)
+    print(f"Updated: '{original}'")
+    print(f"  {old_answer!r} -> {answer!r}")
+
+
+def run_answers_clear():
+    _save_qa_cli({})
+    print("All cached answers cleared.")
 
 
 ENV_FILE = os.path.join(os.path.dirname(__file__), ".env")
@@ -205,6 +323,17 @@ def run_login(site: str):
 
 def main():
     args = parse_args()
+
+    if args.task == "answers":
+        if args.answers_action == "list":
+            run_answers_list()
+        elif args.answers_action == "show":
+            run_answers_show()
+        elif args.answers_action == "set":
+            run_answers_set(args.question, args.answer)
+        elif args.answers_action == "clear":
+            run_answers_clear()
+        return
 
     if args.task == "provider":
         if args.provider_action == "show":

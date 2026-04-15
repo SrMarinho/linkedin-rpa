@@ -48,6 +48,18 @@ def _save_qa(qa: dict) -> None:
     except Exception as e:
         logger.warning(f"Could not save qa.json: {e}")
 
+
+def _qa_answer(entry) -> str:
+    """Extract the answer string from a qa entry (supports legacy string format and new dict format)."""
+    if isinstance(entry, dict):
+        return entry.get("answer", "") or ""
+    return str(entry) if entry is not None else ""
+
+
+def _qa_entry(answer: str, original: str = "", field_type: str = "text", options: list | None = None) -> dict:
+    """Build a rich qa entry dict."""
+    return {"answer": answer, "original": original, "type": field_type, "options": options}
+
 # React-aware value setter — triggers React's synthetic onChange
 _REACT_SET_VALUE = """
 (function(el, val) {
@@ -271,9 +283,9 @@ class JobApplicationHandler:
 
             for i, field in enumerate(fields):
                 key = _normalize_question(field["question"])
-                saved = qa.get(key)
-                if saved is not None and str(saved).strip():
-                    cached_answers[str(i)] = str(saved)
+                saved_answer = _qa_answer(qa.get(key))
+                if saved_answer:
+                    cached_answers[str(i)] = saved_answer
                 else:
                     pending_fields.append(field)
                     pending_indices.append(i)
@@ -298,7 +310,7 @@ class JobApplicationHandler:
                     continue
                 key = _normalize_question(field["question"])
                 if key not in qa:
-                    qa[key] = ""
+                    qa[key] = _qa_entry("", field["question"], field["type"], field.get("options"))
                     _save_qa(qa)
                     logger.warning(f"No answer for '{field['question']}' — saved to qa.json for manual input")
 
@@ -332,8 +344,8 @@ class JobApplicationHandler:
                 else:
                     self._apply_select(field, answer)
 
-                if qa.get(key) != answer:
-                    qa[key] = answer
+                if _qa_answer(qa.get(key)) != answer:
+                    qa[key] = _qa_entry(answer, field["question"], field["type"], field.get("options"))
                     _save_qa(qa)
 
             # ── post-fill validation pass ─────────────────────────────────────
@@ -362,7 +374,7 @@ class JobApplicationHandler:
                         self._set_input_value(item["field"]["el"], corrected)
                         logger.info(f"Post-fill corrected '{q}' → '{corrected}'")
                         key = _normalize_question(q)
-                        qa[key] = corrected
+                        qa[key] = _qa_entry(corrected, q, item["field"]["type"], item["field"].get("options"))
                         _save_qa(qa)
 
         except Exception as e:
