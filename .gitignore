@@ -56,6 +56,9 @@ Thumbs.db.env
 temp/
 .env
 
+# Scripts pessoais locais
+local/
+
 # Arquivos do projeto
 drivers/**/*
 !drivers/
@@ -64,8 +67,5 @@ files/*
 screenshots.png
 screenshots/
 bot_profile/
-resume.pdf
 resume.txt
 *.pdf
-applied_jobs.json
-rejected_jobs.json

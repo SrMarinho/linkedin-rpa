@@ -124,7 +124,9 @@ def parse_args():
     apply_parser.add_argument("--resume", type=str, default=None, help="Path to resume file (default: resume.txt)")
     apply_parser.add_argument("--preferences", type=str, default="", help="Job preferences to guide evaluation")
     apply_parser.add_argument("--level", type=str, nargs="+", default=[], help="Accepted seniority levels (e.g. --level junior pleno)")
+    apply_parser.add_argument("--start-page", type=int, default=None, help="Page to start from (default: 1)")
     apply_parser.add_argument("--max-pages", type=int, default=100, help="Max pages to process (default: 100)")
+    apply_parser.add_argument("--max-applications", type=int, default=0, metavar="N", help="Stop after applying to N jobs (default: 0 = unlimited)")
     apply_parser.add_argument("--continue", dest="resume_from", action="store_true", help="Resume from the last page where it stopped")
     apply_parser.add_argument("--site", choices=["linkedin", "glassdoor", "indeed"], default=None, help="Resume saved config for a specific site (default: last used site)")
     apply_parser.add_argument("--llm-provider", choices=["claude", "langchain"], default=None, metavar="BACKEND", help="Override LLM provider for this run only (claude or langchain)")
@@ -686,7 +688,7 @@ def main():
                 save_weekly_limit_reached()
                 logger.info("Weekly limit reached — saved. Will skip until next week.")
         elif args.task == "apply":
-            JobApplicationManager(driver, url=url, resume_path=resume_path, preferences=preferences, level=level, max_pages=args.max_pages, start_page=start_page, on_page_change=on_page_change).run()
+            JobApplicationManager(driver, url=url, resume_path=resume_path, preferences=preferences, level=level, max_pages=args.max_pages, max_applications=getattr(args, "max_applications", 0), start_page=start_page, on_page_change=on_page_change).run()
         try:
             driver.save_screenshot(f"{setting.screenshots_path}.png")
         except Exception:

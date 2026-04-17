@@ -37,6 +37,7 @@ class JobApplicationManager:
         preferences: str = "",
         level: str = "",
         max_pages: int = 100,
+        max_applications: int = 0,
         start_page: int = 1,
         stop_event: threading.Event | None = None,
         on_page_change=None,
@@ -61,6 +62,7 @@ class JobApplicationManager:
         self.evaluator = JobEvaluator(resume_path, preferences=preferences, level=level)
         self.tracker = AppliedJobsTracker()
         self.stop_event = stop_event or threading.Event()
+        self.max_applications = max_applications
         self.applied_count = 0
         self.evaluated_count = 0
 
@@ -224,6 +226,10 @@ class JobApplicationManager:
                     self.applied_count += 1
                     self.tracker.mark_applied(job_url, title, salary, company=company)
                     logger.info(f"Applied ({self.applied_count} total)")
+                    if self.max_applications and self.applied_count >= self.max_applications:
+                        logger.info(f"Reached max applications limit ({self.max_applications}), stopping")
+                        self.stop_event.set()
+                        return
 
                 time.sleep(1)
 
