@@ -7,13 +7,6 @@ from src.config.settings import logger
 
 MAX_DESCRIPTION_CHARS = 3000
 
-_EN_WORDS = {"the ", " and ", " for ", " with ", " are ", " our ", " you ",
-             " will ", " this ", " that ", " have ", " from ", " your ", " we "}
-_ES_WORDS = {"buscamos", "requisitos", "experiencia", "conocimientos", "nuestro",
-             "nuestra", " equipo", "también", " muy ", " pero ", "trabajar",
-             "empresa", " años", "hablar", " español", "buscar"}
-_PT_WORDS = {" de ", " para ", " com ", " em ", " que ", " não ", " uma ",
-             " sua ", " seu ", " por ", " das ", " dos ", " uma ", " isso "}
 
 # Tech stacks and their aliases — used for deterministic filtering
 # Each entry: (canonical_name, [keywords_that_identify_it])
@@ -98,18 +91,22 @@ class JobEvaluator:
         return False
 
     def language_reject(self, description: str) -> bool:
-        """Returns True if the description is clearly not in Portuguese."""
-        text = description[:2000].lower()
-        en = sum(1 for w in _EN_WORDS if w in text)
-        es = sum(1 for w in _ES_WORDS if w in text)
-        pt = sum(1 for w in _PT_WORDS if w in text)
-        if en >= 3 and pt <= 1:
-            logger.info(f"Quick reject (language: likely English — en={en}, pt={pt})")
-            return True
-        if es >= 3 and pt <= 1:
-            logger.info(f"Quick reject (language: likely Spanish — es={es}, pt={pt})")
-            return True
+        """Returns True if the description is not in Portuguese (AI-based detection)."""
+        snippet = description[:400].strip()
+        if not snippet:
+            return False
+        try:
+            lang = asyncio.run(self._detect_language(snippet))
+            if "portuguese" not in lang.lower():
+                logger.info(f"Quick reject (language: '{lang.strip()}')")
+                return True
+        except Exception as e:
+            logger.warning(f"Language detection failed: {e}")
         return False
+
+    async def _detect_language(self, text: str) -> str:
+        prompt = f"What language is this text written in? Reply with only the language name in English, nothing else.\n\n{text}"
+        return await get_eval_provider().complete(prompt)
 
     def tech_reject(self, title: str, description: str) -> bool:
         """Returns True if the job can be rejected based on tech stack mismatch.

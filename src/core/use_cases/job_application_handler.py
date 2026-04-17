@@ -578,7 +578,7 @@ Responda APENAS com o valor corrigido — um número, palavra curta ou frase bre
             logger.warning(f"Failed to handle checkbox '{question}': {e}")
 
     def _apply_select(self, field: dict, answer: str) -> None:
-        """Apply an answer to a select field using React-aware value setter."""
+        """Apply an answer to a select field with smart retry on validation error."""
         question = field["question"]
 
         el = None
@@ -596,54 +596,59 @@ Responda APENAS com o valor corrigido — um número, palavra curta ou frase bre
             answer_n = _normalize(answer)
             option_map: dict = field.get("_option_map", {})
 
-            matched_val = None
-            matched_label = None
+            # Build ordered candidate list: best match first, rest appended
+            seen_vals: set = set()
+            candidates: list[tuple[str, str]] = []  # (value, label)
 
-            # 0. Label→value map (AI was given labels, try direct lookup first)
+            def _add(val: str, label: str):
+                if val and val not in seen_vals:
+                    seen_vals.add(val)
+                    candidates.append((val, label))
+
+            # 0. Exact label match
             for label, val in option_map.items():
                 if _normalize(label) == answer_n:
-                    matched_val, matched_label = val, label
-                    break
+                    _add(val, label)
 
-            # 1. Substring on label map
-            if not matched_val:
-                for label, val in option_map.items():
-                    lbl_n = _normalize(label)
-                    if answer_n in lbl_n or lbl_n in answer_n:
-                        matched_val, matched_label = val, label
-                        break
+            # 1. Substring on label
+            for label, val in option_map.items():
+                lbl_n = _normalize(label)
+                if answer_n in lbl_n or lbl_n in answer_n:
+                    _add(val, label)
 
-            # 2. Word-overlap on label map
-            if not matched_val:
-                answer_words = set(answer_n.split())
-                for label, val in option_map.items():
-                    if answer_words & set(_normalize(label).split()):
-                        matched_val, matched_label = val, label
-                        break
+            # 2. Word-overlap on label
+            answer_words = set(answer_n.split())
+            for label, val in option_map.items():
+                if answer_words & set(_normalize(label).split()):
+                    _add(val, label)
 
-            # 3. Direct value match from DOM (fallback when no label map)
-            if not matched_val:
-                for opt_el in opt_elements:
-                    val = opt_el.get_attribute("value")
-                    if val and _normalize(val) == answer_n:
-                        matched_val, matched_label = val, opt_el.text.strip()
-                        break
+            # 3. Direct value match from DOM
+            for opt_el in opt_elements:
+                val = opt_el.get_attribute("value")
+                if val and _normalize(val) == answer_n:
+                    _add(val, opt_el.text.strip())
 
-            # 4. First non-placeholder option
-            if not matched_val:
-                for opt_el in opt_elements:
-                    val = opt_el.get_attribute("value")
-                    if val:
-                        matched_val, matched_label = val, opt_el.text.strip()
-                        logger.warning(f"No match for '{answer}' in '{question}' — falling back to first: '{matched_label}'")
-                        break
+            # 4. All remaining non-placeholder options as fallback pool
+            for opt_el in opt_elements:
+                val = opt_el.get_attribute("value")
+                if val:
+                    _add(val, opt_el.text.strip())
 
-            if matched_val:
-                self.driver.execute_script(_REACT_SET_VALUE, el, matched_val)
-                time.sleep(0.3)
-                logger.info(f"Selected '{matched_label}' for '{question}'")
-            else:
+            if not candidates:
                 logger.warning(f"No options available for '{question}'")
+                return
+
+            # Try candidates in order, stop at first with no validation error
+            for val, label in candidates:
+                self.driver.execute_script(_REACT_SET_VALUE, el, val)
+                time.sleep(0.3)
+                error = self._get_field_error(el)
+                if not error:
+                    logger.info(f"Selected '{label}' for '{question}'")
+                    return
+                logger.debug(f"Option '{label}' rejected by validation: {error} — trying next")
+
+            logger.warning(f"All options failed validation for '{question}' — leaving last selected")
         except Exception as e:
             logger.warning(f"Failed to select for '{question}': {e}")
 
