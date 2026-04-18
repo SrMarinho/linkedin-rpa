@@ -177,8 +177,8 @@ def parse_args():
     answers_sub.add_parser("clear", help="Remove all cached answers")
 
     report_parser = subparsers.add_parser("report", help="Generate and send monthly report via Telegram")
-    report_parser.add_argument("--month", type=str, default=None, metavar="YYYY-MM", help="Month to report (default: last month). Use --force to bypass day-1 check")
-    report_parser.add_argument("--force", action="store_true", help="Send report even if today is not the 1st")
+    report_parser.add_argument("--month", type=str, default=None, metavar="YYYY-MM", help="Specific month to report (e.g. 2025-03)")
+    report_parser.add_argument("--scheduled", action="store_true", help="Scheduled mode: skip if report already sent this month")
 
     provider_parser = subparsers.add_parser("provider", help="Show or change LLM provider settings")
     provider_sub = provider_parser.add_subparsers(dest="provider_action", required=True)
@@ -568,9 +568,10 @@ def main():
         return
 
     if args.task == "report":
-        from src.core.use_cases.monthly_report import generate_report, _save_report, _format_report, run_monthly_report, _month_key
-        from datetime import date as _date
-        if getattr(args, "month", None):
+        from src.core.use_cases.monthly_report import generate_report, _save_report, _format_report, send_report_now, run_monthly_report_scheduled
+        if getattr(args, "scheduled", False):
+            run_monthly_report_scheduled()
+        elif getattr(args, "month", None):
             try:
                 year, month = map(int, args.month.split("-"))
             except ValueError:
@@ -581,17 +582,8 @@ def main():
             from src.utils.telegram import send_telegram
             send_telegram(_format_report(report))
             print(_format_report(report).replace("<b>", "").replace("</b>", ""))
-        elif getattr(args, "force", False):
-            today = _date.today()
-            year = today.year if today.month > 1 else today.year - 1
-            month = today.month - 1 if today.month > 1 else 12
-            report = generate_report(year, month)
-            _save_report(report)
-            from src.utils.telegram import send_telegram
-            send_telegram(_format_report(report))
-            print(_format_report(report).replace("<b>", "").replace("</b>", ""))
         else:
-            run_monthly_report()
+            send_report_now()
         return
 
     last_urls = load_last_urls()

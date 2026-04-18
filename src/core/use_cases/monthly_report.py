@@ -145,25 +145,31 @@ def _format_report(report: dict) -> str:
     )
 
 
-def run_monthly_report() -> None:
-    today = date.today()
-
-    if today.day != 1:
-        logger.info(f"Monthly report: today is day {today.day}, skipping (runs only on day 1)")
-        return
-
-    month_key = _month_key(today.year, today.month)
-    report_path = _REPORTS_DIR / f"{month_key}.json"
-    if report_path.exists():
-        logger.info("Monthly report already sent this month, skipping")
-        return
-
-    # Report covers the previous month
+def _prev_month(today: date) -> tuple[int, int]:
     if today.month == 1:
-        year, month = today.year - 1, 12
-    else:
-        year, month = today.year, today.month - 1
+        return today.year - 1, 12
+    return today.year, today.month - 1
 
+
+def send_report_now() -> None:
+    """Always generates and sends the previous month's report (manual use)."""
+    today = date.today()
+    year, month = _prev_month(today)
+    logger.info(f"Generating monthly report for {_month_key(year, month)}...")
+    report = generate_report(year, month)
+    _save_report(report)
+    send_telegram(_format_report(report))
+    logger.info("Monthly report sent via Telegram")
+
+
+def run_monthly_report_scheduled() -> None:
+    """Sends the report only once per month — intended for scheduled/startup use."""
+    today = date.today()
+    year, month = _prev_month(today)
+    report_path = _REPORTS_DIR / f"{_month_key(year, month)}.json"
+    if report_path.exists():
+        logger.info(f"Monthly report for {_month_key(year, month)} already sent, skipping")
+        return
     logger.info(f"Generating monthly report for {_month_key(year, month)}...")
     report = generate_report(year, month)
     _save_report(report)
