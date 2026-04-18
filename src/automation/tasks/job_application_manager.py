@@ -4,12 +4,20 @@ from selenium.webdriver.remote.webdriver import WebDriver
 from src.automation.pages.jobs_search_page import JobsSearchPage
 from src.automation.pages.indeed_jobs_page import IndeedJobsPage
 from src.automation.pages.glassdoor_jobs_page import GlassdoorJobsPage
-from src.core.use_cases.job_evaluator import JobEvaluator
+from src.core.use_cases.job_evaluator import JobEvaluator, _LEVEL_KEYWORDS, _normalize
 from src.core.use_cases.skills_tracker import track_missing_skills
 from src.core.use_cases.job_application_handler import JobApplicationHandler
 from src.core.use_cases.indeed_application_handler import IndeedApplicationHandler
 from src.core.use_cases.applied_jobs_tracker import AppliedJobsTracker
 from src.config.settings import logger
+
+
+def _detect_level(title: str, description: str = "") -> str:
+    text = _normalize(f"{title} {description[:500]}")
+    for level, keywords in _LEVEL_KEYWORDS.items():
+        if any(kw in text for kw in keywords):
+            return level
+    return "unknown"
 
 
 def _detect_site(url: str) -> str:
@@ -224,7 +232,8 @@ class JobApplicationManager:
 
                 if success:
                     self.applied_count += 1
-                    self.tracker.mark_applied(job_url, title, salary, company=company)
+                    detected_level = _detect_level(title, description)
+                    self.tracker.mark_applied(job_url, title, salary, company=company, level=detected_level)
                     logger.info(f"Applied ({self.applied_count} total)")
                     if self.max_applications and self.applied_count >= self.max_applications:
                         logger.info(f"Reached max applications limit ({self.max_applications}), stopping")
