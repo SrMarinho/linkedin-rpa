@@ -176,9 +176,10 @@ def parse_args():
 
     answers_sub.add_parser("clear", help="Remove all cached answers")
 
-    report_parser = subparsers.add_parser("report", help="Generate and send monthly report via Telegram")
+    report_parser = subparsers.add_parser("report", help="Generate and print monthly report (use --telegram to also send via Telegram)")
     report_parser.add_argument("--month", type=str, default=None, metavar="YYYY-MM", help="Specific month to report (e.g. 2025-03)")
-    report_parser.add_argument("--scheduled", action="store_true", help="Scheduled mode: skip if report already sent this month")
+    report_parser.add_argument("--telegram", action="store_true", help="Send report via Telegram in addition to printing")
+    report_parser.add_argument("--scheduled", action="store_true", help="Scheduled mode: send via Telegram only once per month, skip if already sent")
 
     provider_parser = subparsers.add_parser("provider", help="Show or change LLM provider settings")
     provider_sub = provider_parser.add_subparsers(dest="provider_action", required=True)
@@ -568,23 +569,30 @@ def main():
         return
 
     if args.task == "report":
-        from src.core.use_cases.monthly_report import generate_report, _save_report, _format_report, send_report_now, run_monthly_report_scheduled
+        import sys
+        from src.core.use_cases.monthly_report import generate_report, _save_report, _format_report, _prev_month, run_monthly_report_scheduled
+        from datetime import date as _date
+
+        def _print_report(report):
+            sys.stdout.buffer.write((_format_report(report).replace("<b>", "").replace("</b>", "") + "\n").encode("utf-8", "replace"))
+
         if getattr(args, "scheduled", False):
             run_monthly_report_scheduled()
-        elif getattr(args, "month", None):
-            try:
-                year, month = map(int, args.month.split("-"))
-            except ValueError:
-                print("Invalid --month format. Use YYYY-MM")
-                return
+        else:
+            if getattr(args, "month", None):
+                try:
+                    year, month = map(int, args.month.split("-"))
+                except ValueError:
+                    print("Invalid --month format. Use YYYY-MM")
+                    return
+            else:
+                year, month = _prev_month(_date.today())
             report = generate_report(year, month)
             _save_report(report)
-            from src.utils.telegram import send_telegram
-            send_telegram(_format_report(report))
-            import sys
-            sys.stdout.buffer.write((_format_report(report).replace("<b>", "").replace("</b>", "") + "\n").encode("utf-8", "replace"))
-        else:
-            send_report_now()
+            if getattr(args, "telegram", False):
+                from src.utils.telegram import send_telegram
+                send_telegram(_format_report(report))
+            _print_report(report)
         return
 
     last_urls = load_last_urls()
