@@ -581,7 +581,8 @@ def main():
             _save_report(report)
             from src.utils.telegram import send_telegram
             send_telegram(_format_report(report))
-            print(_format_report(report).replace("<b>", "").replace("</b>", "").encode("utf-8", "replace").decode("utf-8"))
+            import sys
+            sys.stdout.buffer.write((_format_report(report).replace("<b>", "").replace("</b>", "") + "\n").encode("utf-8", "replace"))
         else:
             send_report_now()
         return
