@@ -172,7 +172,7 @@ JOB DESCRIPTION:
 RULES (answer NO if any fails):
 1. Description must be in Portuguese. If English/Spanish → NO.
 {level_rule}3. Technologies and preferences must match.
-4. Must be remote or hybrid inside Brazil.
+4. Work location: if the description does not explicitly mention on-site or hybrid work, assume it is fully remote and accept it. Only reject if it explicitly requires presential or hybrid attendance.
 
 Salary reference (BRL/month): Junior CLT 3000-6000 PJ 4000-8000 | Pleno CLT 6000-10000 PJ 8000-14000 | Senior CLT 10000-18000 PJ 14000-25000
 
