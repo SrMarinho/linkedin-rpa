@@ -641,21 +641,23 @@ Responda APENAS com o valor corrigido — um número, palavra curta ou frase bre
             # Try candidates in order, stop at first with no validation error
             for val, label in candidates:
                 try:
-                    el.click()
-                    time.sleep(0.3)
                     opt_el = next(
                         (o for o in Select(el).options if o.get_attribute("value") == val),
                         None,
                     )
                     if opt_el:
-                        opt_el.click()
+                        # Click the select to open it, then click the option via JS
+                        self.driver.execute_script("arguments[0].click();", el)
+                        time.sleep(0.2)
+                        self.driver.execute_script("arguments[0].click();", opt_el)
                     else:
                         Select(el).select_by_value(val)
+                    # Dispatch React change event after selection
+                    self.driver.execute_script(
+                        "arguments[0].dispatchEvent(new Event('change',{bubbles:true}));", el
+                    )
                 except Exception:
-                    try:
-                        Select(el).select_by_value(val)
-                    except Exception:
-                        self.driver.execute_script(_REACT_SET_VALUE, el, val)
+                    self.driver.execute_script(_REACT_SET_VALUE, el, val)
                 time.sleep(0.3)
                 error = self._get_field_error(el)
                 if not error:
